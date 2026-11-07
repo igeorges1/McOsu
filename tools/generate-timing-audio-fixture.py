@@ -31,6 +31,9 @@ if "--preroll-head" in sys.argv[2:]:
 if "--early-return" in sys.argv[2:]:
     objects = [f"256,192,{t},1,0,0:0:0:0:" for t in range(2000, 2800, 100)]
     objects += [f"256,192,{t},1,0,0:0:0:0:" for t in (5700, 6200, 6700, 7200)]
+if "--late-departure" in sys.argv[2:]:
+    objects = [f"256,192,{t},1,0,0:0:0:0:" for t in range(2000, 2800, 100)]
+    objects += [f"256,192,{t},1,0,0:0:0:0:" for t in (2800, 5800, 6300)]
 metadata = """osu file format v14
 
 [General]

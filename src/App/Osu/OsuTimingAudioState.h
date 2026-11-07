@@ -120,6 +120,7 @@ public:
 				++m_gapIndex;
 				m_gapElapsedMS = 0.0;
 				m_gapQualified = false;
+				m_haveGapCorrection = false;
 			}
 		}
 		m_activeMS += std::max(0.0, mapMS - position) / speed;
@@ -153,15 +154,23 @@ public:
 			else if (result.deviationMS > m_config.deadZoneMS) result.cue = LATE;
 		}
 
-		if (m_samples < 8)
-			m_baselineMS += (errorMS - m_baselineMS) / (double)(m_samples + 1);
-		else
+		// A late departure may be judged after a rest has started but before its
+		// duration qualifies. Keep the alternative with that pending gap removed;
+		// commit it only if the gap qualifies, otherwise retain ordinary elapsed time.
+		if (!m_config.fixedHits && !m_gapQualified && m_gapIndex < m_gaps.size()
+			&& m_gapElapsedMS > 0.0 && opportunityMS <= m_gaps[m_gapIndex].startMS)
 		{
-			const double elapsed = m_config.fixedHits ? 1.0 : std::max(0.0, m_activeMS - m_lastSampleMS) / 1000.0;
-			const double halfLife = m_config.fixedHits ? m_config.halfLifeHits : m_config.halfLifeSeconds;
-			const double alpha = -std::expm1(-std::log(2.0) * elapsed / halfLife);
-			m_baselineMS += alpha * (errorMS - m_baselineMS);
+			if (!m_haveGapCorrection)
+			{
+				m_gapBaselineMS = m_baselineMS;
+				m_gapSampleClockMS = m_lastSampleMS;
+				m_haveGapCorrection = true;
+			}
+			const double clock = m_activeMS - m_gapElapsedMS;
+			m_gapBaselineMS = blend(m_gapBaselineMS, errorMS, clock - m_gapSampleClockMS);
+			m_gapSampleClockMS = clock;
 		}
+		m_baselineMS = blend(m_baselineMS, errorMS, m_activeMS - m_lastSampleMS);
 		++m_samples;
 		m_lastSampleMS = m_activeMS;
 		return result;
@@ -172,21 +181,35 @@ public:
 	unsigned long long getSamples() const { return m_samples; }
 
 private:
+	double blend(double baselineMS, double errorMS, double elapsedMS) const
+	{
+		if (m_samples < 8) return baselineMS + (errorMS - baselineMS) / (double)(m_samples + 1);
+		const double elapsed = m_config.fixedHits ? 1.0 : std::max(0.0, elapsedMS) / 1000.0;
+		const double halfLife = m_config.fixedHits ? m_config.halfLifeHits : m_config.halfLifeSeconds;
+		return baselineMS - std::expm1(-std::log(2.0) * elapsed / halfLife) * (errorMS - baselineMS);
+	}
 	void qualifyGap()
 	{
 		// Remove elapsed gap time; its remaining early-hit tail stays excluded.
 		m_activeMS -= m_gapElapsedMS;
+		if (m_haveGapCorrection)
+		{
+			m_baselineMS = m_gapBaselineMS;
+			m_lastSampleMS = m_gapSampleClockMS;
+			m_haveGapCorrection = false;
+		}
 		m_lastSampleMS = std::min(m_lastSampleMS, m_activeMS);
 		m_gapQualified = true;
 		if (m_config.restartAfterBreak) restartBaseline();
 	}
-	void restartBaseline() { m_baselineMS = 0.0; m_samples = 0; m_lastSampleMS = m_activeMS; }
+	void restartBaseline() { m_baselineMS = 0.0; m_samples = 0; m_lastSampleMS = m_activeMS; m_haveGapCorrection = false; }
 	Config m_config;
 	std::vector<Activity> m_gaps;
 	double m_baselineMS, m_activeMS, m_lastSampleMS, m_lastMapMS, m_gapElapsedMS, m_speed;
+	double m_gapBaselineMS, m_gapSampleClockMS;
 	unsigned long long m_samples;
 	size_t m_gapIndex;
-	bool m_havePosition, m_gapQualified;
+	bool m_havePosition, m_gapQualified, m_haveGapCorrection;
 };
 
 #endif

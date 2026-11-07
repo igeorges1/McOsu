@@ -112,6 +112,32 @@ int main()
 			CHECK(s.getSamples() == (restart ? 1u : 9u)); // returning hit is not erased
 		}
 	}
+	// Late departing judgements must not permanently weight an eventual long rest.
+	c.restartAfterBreak = false; s.configure(c);
+	s.setActivities({{0, 0}, {800, 800}, {3800, 3800}}); seed(s, 0);
+	s.advance(900, 1); s.sample(100, 50, true, 800);
+	s.advance(3812, 1); r = s.sample(12, 50, true, 3800);
+	near(r.baselineMS, 1.376729551); CHECK(r.cue == State::LATE);
+	// Short gaps retain their elapsed time; do not pre-emptively discard it.
+	s.setActivities({{0, 0}, {800, 800}, {1500, 1500}}); seed(s, 0);
+	s.advance(900, 1); s.sample(100, 50, true, 800);
+	s.advance(1512, 1); r = s.sample(12, 50, true, 1500);
+	near(r.baselineMS, 2.734505259); CHECK(r.cue == State::SILENT);
+	// Multiple late judgements at a shared opportunity all stay in the sample count.
+	s.setActivities({{0, 0}, {800, 800}, {3800, 3800}}); seed(s, 0);
+	s.advance(900, 1); s.sample(100, 50, true, 800);
+	s.advance(920, 1); s.sample(120, 50, true, 800);
+	s.advance(3812, 1); r = s.sample(12, 50, true, 3800);
+	near(r.baselineMS, 1.376729551); CHECK(r.precedingSamples == 10); CHECK(r.cue == State::LATE);
+	// Classification uses elapsed real time, not a prediction made at departure.
+	s.setActivities({{0, 0}, {800, 800}, {3800, 3800}}); seed(s, 0);
+	s.advance(900, 1); s.sample(100, 50, true, 800);
+	s.advance(3800, 3); r = s.sample(12, 50, true, 3800);
+	near(r.baselineMS, 2.734505259); // speeding up made the gap shorter than 3s
+	s.setActivities({{0, 0}, {800, 800}, {2800, 2800}}); seed(s, 0);
+	s.advance(900, 1); s.sample(100, 50, true, 800);
+	s.advance(2806, 0.5); r = s.sample(12, 50, true, 2800);
+	near(r.baselineMS, 1.376729551); // slowing down made the gap qualify
 	// Raw/interpolated clock correction after pause must preserve retained timing.
 	s.setActivities({{0, 10000}}); s.advance(0, 1); s.advance(3000, 1);
 	s.sample(20, 50, true); s.pause(false); s.advance(2980, 1);
