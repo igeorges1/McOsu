@@ -1959,6 +1959,7 @@ void OsuSlider::onClickEvent(std::vector<OsuBeatmap::CLICK> &clicks)
 				const float targetAngle = rad2deg(atan2(cursorPos.y - pos.y, cursorPos.x - pos.x));
 
 				clicks.erase(clicks.begin());
+				m_beatmap->playTimingFeedback(delta, result);
 				m_startResult = result;
 				onHit(m_startResult, delta, false, targetDelta, targetAngle);
 			}

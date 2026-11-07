@@ -20,6 +20,7 @@ class Osu;
 class OsuVR;
 class OsuSkin;
 class OsuHitObject;
+class OsuTimingAudioFeedback;
 
 class OsuDatabaseBeatmap;
 
@@ -167,6 +168,7 @@ public:
 	void addScorePoints(int points, bool isSpinner = false);
 	void addHealth(double percent, bool isFromHitResult);
 	void updateTimingPoints(long curPos);
+	void playTimingFeedback(long delta, OsuScore::HIT result);
 
 	// ILLEGAL:
 	inline const std::vector<OsuHitObject*> &getHitObjectsPointer() const {return m_hitobjects;}
@@ -225,6 +227,7 @@ protected:
 	unsigned long getMusicPositionMSInterpolated();
 
 	Osu *m_osu;
+	OsuTimingAudioFeedback *m_timingAudioFeedback;
 
 	// beatmap state
 	bool m_bIsPlaying;
