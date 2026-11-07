@@ -11,9 +11,9 @@ static void near(double actual, double expected)
 	if (std::abs(actual - expected) >= 0.00001) std::fprintf(stderr, "actual %.12f expected %.12f\n", actual, expected);
 	CHECK(std::abs(actual - expected) < 0.00001);
 }
-static void seed(State &s, double error)
+static void seed(State &s, double error, double speed = 1.0)
 {
-	for (int i = 0; i < 8; ++i) { s.advance(i * 100.0, 1.0); s.sample(error, 50, true); }
+	for (int i = 0; i < 8; ++i) { s.advance(i * 100.0 * speed, speed); s.sample(error, 50, true); }
 }
 
 int main()
@@ -72,14 +72,15 @@ int main()
 			CHECK(s.getSamples() == (unsigned)(restart && excludeActivity ? 0 : 1));
 		}
 	// Manual pause follows policy, and restart permits second-hit startup again.
-	c.restartAfterBreak = true; s.configure(c); s.pause(); CHECK(s.getSamples() == 0);
+	c.restartAfterBreak = true; s.configure(c); s.pause(true); CHECK(s.getSamples() == 0);
 	CHECK(s.sample(-30, 50, true).cue == State::SILENT);
 	CHECK(s.sample(0, 50, true).cue == State::LATE);
-	c.restartAfterBreak = false; s.configure(c); auto count = s.getSamples(); s.pause(); CHECK(s.getSamples() == count);
+	c.restartAfterBreak = false; s.configure(c); auto count = s.getSamples(); s.pause(false); CHECK(s.getSamples() == count);
 	// Clock follows real elapsed time when playback speed changes between frames.
 	s.setActivities({{0, 10000}}); s.advance(0, 1); s.advance(1000, 1); s.advance(3000, 2); near(s.getActiveMS(), 2000);
-	// Seeking backward starts a fresh baseline; dead-zone endpoints are silent.
-	s.sample(20, 50, true); s.advance(0, 1); CHECK(s.getSamples() == 0);
+	// Explicit seek uses reset; ordinary clock corrections retain learned hits.
+	s.sample(20, 50, true); s.advance(2990, 2); CHECK(s.getSamples() == 1);
+	s.reset(); s.advance(0, 1); CHECK(s.getSamples() == 0);
 	CHECK(s.sample(10, 50, false).cue == State::SILENT);
 	CHECK(s.sample(-10, 50, false).cue == State::SILENT);
 	// A single advance can cross several gaps, including a qualifying one.
@@ -95,6 +96,32 @@ int main()
 		s.advance(end, speed);
 		near(s.getActiveMS(), 0);
 	}
+	// An early accepted return resolves the WHOLE scheduled break first.
+	for (bool restart : {false, true})
+	{
+		for (double speed : {0.75, 1.0, 1.5, 3.0})
+		{
+			c.restartAfterBreak = restart; s.configure(c);
+			s.setActivities({{0, 0}, {700 * speed, 700 * speed}, {3700 * speed, 3700 * speed}}); seed(s, 0, speed);
+			s.advance(3670 * speed, speed);
+			r = s.sample(-30, 50, true, 3700 * speed);
+			CHECK(r.precedingSamples == (restart ? 0u : 8u));
+			CHECK(r.cue == (restart ? State::SILENT : State::EARLY));
+			near(s.getActiveMS(), 700); near(s.getBaselineMS(), restart ? -30 : 0);
+			s.advance(3700 * speed, speed);
+			CHECK(s.getSamples() == (restart ? 1u : 9u)); // returning hit is not erased
+		}
+	}
+	// Raw/interpolated clock correction after pause must preserve retained timing.
+	s.setActivities({{0, 10000}}); s.advance(0, 1); s.advance(3000, 1);
+	s.sample(20, 50, true); s.pause(false); s.advance(2980, 1);
+	CHECK(s.getSamples() == 1); near(s.getBaselineMS(), 20); near(s.getActiveMS(), 3000);
+	s.advance(3010, 1); CHECK(s.getSamples() == 1); near(s.getActiveMS(), 3010);
+	// Pre-roll (negative music time) can contain eligible hits.
+	s.reset(); s.advance(-30, 1);
+	CHECK(s.sample(-30, 50, false, 0).cue == State::EARLY);
+	s.advance(500, 1); r = s.sample(0, 50, true, 500);
+	CHECK(r.precedingSamples == 1); CHECK(r.cue == State::LATE);
 
 	const auto start = std::chrono::steady_clock::now();
 	s.setActivities({{0, 50000000}});

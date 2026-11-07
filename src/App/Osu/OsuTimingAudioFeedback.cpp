@@ -47,8 +47,7 @@ void OsuTimingAudioFeedback::reset()
 
 void OsuTimingAudioFeedback::pause()
 {
-	if (m_enabled && osu_timing_audio_restart.getBool()) reset();
-	// Retain uses the music-position clock, which excludes the manual pause.
+	if (m_enabled) m_state.pause(osu_timing_audio_restart.getBool());
 }
 
 void OsuTimingAudioFeedback::update()
@@ -59,7 +58,7 @@ void OsuTimingAudioFeedback::update()
 		m_enabled = false;
 		return;
 	}
-	if (!m_beatmap->isPlaying() || m_beatmap->isPaused() || m_beatmap->isWaiting() || m_beatmap->isContinueScheduled()) return;
+	if (!m_beatmap->isPlaying() || m_beatmap->isPaused() || m_beatmap->isContinueScheduled() || m_beatmap->isLoading()) return;
 	m_enabled = true;
 
 	OsuTimingAudioState::Config config;
@@ -99,7 +98,7 @@ void OsuTimingAudioFeedback::update()
 	m_state.advance(m_beatmap->getCurMusicPosWithOffsets(), m_beatmap->getSpeedMultiplier());
 }
 
-void OsuTimingAudioFeedback::onManualHit(long delta)
+void OsuTimingAudioFeedback::onManualHit(long opportunityMS, long delta)
 {
 	if (!osu_timing_audio.getBool()) return;
 	Osu *osu = m_beatmap->getOsu();
@@ -107,7 +106,7 @@ void OsuTimingAudioFeedback::onManualHit(long delta)
 	update();
 	if (!m_enabled || !m_prepared || m_beatmap->isPaused() || m_beatmap->isContinueScheduled()) return;
 	const double speed = m_beatmap->getSpeedMultiplier();
-	const auto result = m_state.sample((double)delta / speed, (long)OsuGameRules::getHitWindow300(m_beatmap) / speed, osu_timing_audio_recent.getBool());
+	const auto result = m_state.sample((double)delta / speed, (long)OsuGameRules::getHitWindow300(m_beatmap) / speed, osu_timing_audio_recent.getBool(), opportunityMS);
 	const float volume = timingAudioValue(osu_timing_audio_volume.getFloat(), 0.2, 0.0, 1.0) * osu_volume_effects.getFloat();
 	bool played = false;
 	if (result.cue != OsuTimingAudioState::SILENT && volume > 0.0f)

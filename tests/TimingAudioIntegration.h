@@ -4,11 +4,15 @@
 // Set MCOSU_TIMING_AUDIO_DRIVER=1 and generate the fixture in the runtime first.
 // Uses internal synthetic input, not OS input or Auto/Relax, to exercise the
 // actual manual circle/head handlers. This does not prove hardware input latency.
+#ifndef MCOSU_TIMING_AUDIO_INTEGRATION_H
+#define MCOSU_TIMING_AUDIO_INTEGRATION_H
 #include "Osu.h"
 #include "OsuBeatmapStandard.h"
 #include "OsuDatabaseBeatmap.h"
 #include "OsuSongBrowser2.h"
 #include "OsuHitObject.h"
+#include "OsuSkin.h"
+#include "ConVar.h"
 #include "Mouse.h"
 #include <cstdio>
 #include <cstdlib>
@@ -22,11 +26,23 @@ static void timingAudioIntegration(Osu *osu)
 	static size_t index = 0;
 	static int clicks = 0, consumed = 0, heads = 0;
 	static double start = 0;
+	static double pausedAt = 0;
+	static bool lifecycleDone = false, resumed = false;
+	static bool skinRequested = false;
+	static int skipFrames = 0;
 	static std::vector<double> frameMS;
 	static std::vector<double> denseFrameMS;
 	if (!started)
 	{
-		if (engine->getTime() < 1.0) return;
+		if (engine->getTime() < 1.0 || osu->isSkinLoading()) return;
+		const char *skin = std::getenv("MCOSU_TIMING_AUDIO_SKIN");
+		if (skin != NULL && !skinRequested)
+		{
+			skinRequested = true;
+			convar->getConVarByName("osu_skin")->setValue(skin);
+			osu->reloadSkin();
+			return;
+		}
 		started = true;
 		start = engine->getTime();
 		frameMS.reserve(20000);
@@ -39,20 +55,58 @@ static void timingAudioIntegration(Osu *osu)
 			return;
 		}
 		osu->getSongBrowser()->onDifficultySelected(diff, true);
-		debugLog("TimingIntegration: START auto=%i relax=%i\n", osu->getModAuto(), osu->getModRelax());
+		debugLog("TimingIntegration: START auto=%i relax=%i skin=%s\n", osu->getModAuto(), osu->getModRelax(), osu->getSkin()->getName().toUtf8());
+		return; // Let gameplay establish its clock before sending the first event.
 	}
+	if (skipFrames > 0) { --skipFrames; return; }
 	frameMS.push_back(engine->getFrameTime() * 1000.0);
 	auto beatmap = dynamic_cast<OsuBeatmapStandard*>(osu->getSelectedBeatmap());
+	if (beatmap != NULL && beatmap->isWaiting() && beatmap->getCurMusicPosWithOffsets() >= 0) return;
+	if (beatmap != NULL && !lifecycleDone && beatmap->getCurMusicPosWithOffsets() >= 6000)
+	{
+		if (std::getenv("MCOSU_TIMING_AUDIO_SEEK") != NULL)
+		{
+			lifecycleDone = true; beatmap->seekMS(31000); index = 0;
+			const auto &objects = beatmap->getHitObjectsPointer();
+			while (index < objects.size() && objects[index]->getTime() <= 31000) ++index;
+			debugLog("TimingIntegration: SEEK index=%u\n", (unsigned)index);
+			return;
+		}
+		if (std::getenv("MCOSU_TIMING_AUDIO_RETRY") != NULL)
+		{
+			lifecycleDone = true; beatmap->restart(false); index = 0; skipFrames = 2;
+			debugLog("TimingIntegration: RETRY\n");
+			return;
+		}
+	}
+	if (beatmap != NULL && std::getenv("MCOSU_TIMING_AUDIO_PAUSE") != NULL)
+	{
+		if (!lifecycleDone && beatmap->getCurMusicPosWithOffsets() >= 5400)
+		{
+			lifecycleDone = true; pausedAt = engine->getTime(); beatmap->pause(false);
+			debugLog("TimingIntegration: PAUSE index=%u\n", (unsigned)index);
+		}
+		if (pausedAt > 0 && !resumed && engine->getTime() > pausedAt + 0.5)
+		{
+			resumed = true; beatmap->pause(false);
+		}
+		if (resumed && beatmap->isContinueScheduled())
+		{
+			engine->getMouse()->onPosChange(Vector2(-1000, -1000));
+			beatmap->keyPressed1(false); beatmap->keyReleased1(false);
+		}
+	}
 	if (beatmap != NULL && beatmap->getCurMusicPosWithOffsets() >= 18000 && beatmap->getCurMusicPosWithOffsets() < 22000)
 		denseFrameMS.push_back(engine->getFrameTime() * 1000.0);
-	if (beatmap != NULL && beatmap->isPlaying() && !beatmap->isWaiting() && !beatmap->isLoading())
+	if (beatmap != NULL && beatmap->isPlaying() && !beatmap->isLoading())
 	{
 		const auto &objects = beatmap->getHitObjectsPointer();
 		while (index < objects.size())
 		{
 			auto object = objects[index];
 			if (!object->isCircle() && !object->isSlider()) { ++index; continue; }
-			const long error = object->getTime() >= 18000 && object->getTime() < 22000 ? 20 : ((int)index % 5 - 2) * 20;
+			const long error = std::getenv("MCOSU_TIMING_AUDIO_EARLY_RETURN") != NULL && object->getTime() == 5700 ? -30
+				: (object->getTime() >= 18000 && object->getTime() < 22000 ? 20 : ((int)index % 5 - 2) * 20);
 			if (beatmap->getCurMusicPosWithOffsets() < object->getTime() + error) break;
 			engine->getMouse()->onPosChange(beatmap->osuCoords2Pixels(object->getRawPosAt(object->getTime())) - engine->getMouse()->getOffset());
 			std::vector<OsuBeatmap::CLICK> events(1);
@@ -84,3 +138,5 @@ static void timingAudioIntegration(Osu *osu)
 		engine->shutdown();
 	}
 }
+
+#endif

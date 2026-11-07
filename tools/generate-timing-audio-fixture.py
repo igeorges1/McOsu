@@ -24,6 +24,13 @@ objects += [f"256,192,{t},1,0,0:0:0:0:" for t in range(16000, 17500, 500)]
 objects += [f"256,192,{t},1,0,0:0:0:0:" for t in range(18000, 22000, 50)]
 objects += [f"256,192,{t},1,0,0:0:0:0:" for t in range(23000, 26500, 500)]
 objects += [f"256,192,{t},1,0,0:0:0:0:" for t in range(31000, 35000, 500)]
+if "--preroll-circle" in sys.argv[2:]:
+    objects = ["256,192,0,1,0,0:0:0:0:", "256,192,500,1,0,0:0:0:0:"] + objects
+if "--preroll-head" in sys.argv[2:]:
+    objects = ["256,192,0,2,0,L|396:192,1,140,0|0,0:0|0:0,0:0:0:0:", "256,192,500,1,0,0:0:0:0:"] + objects
+if "--early-return" in sys.argv[2:]:
+    objects = [f"256,192,{t},1,0,0:0:0:0:" for t in range(2000, 2800, 100)]
+    objects += [f"256,192,{t},1,0,0:0:0:0:" for t in (5700, 6200, 6700, 7200)]
 metadata = """osu file format v14
 
 [General]

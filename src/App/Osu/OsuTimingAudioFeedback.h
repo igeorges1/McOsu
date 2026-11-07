@@ -14,7 +14,7 @@ public:
 	void update();
 	void reset();
 	void pause();
-	void onManualHit(long delta);
+	void onManualHit(long opportunityMS, long delta);
 
 private:
 	OsuBeatmap *m_beatmap;

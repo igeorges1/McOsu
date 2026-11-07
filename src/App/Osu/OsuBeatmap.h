@@ -168,7 +168,7 @@ public:
 	void addScorePoints(int points, bool isSpinner = false);
 	void addHealth(double percent, bool isFromHitResult);
 	void updateTimingPoints(long curPos);
-	void playTimingFeedback(long delta, OsuScore::HIT result);
+	void playTimingFeedback(long opportunityMS, long delta, OsuScore::HIT result);
 
 	// ILLEGAL:
 	inline const std::vector<OsuHitObject*> &getHitObjectsPointer() const {return m_hitobjects;}
