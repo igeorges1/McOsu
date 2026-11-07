@@ -20,9 +20,8 @@ ConVar osu_timing_audio_restart("osu_timing_audio_restart", false, FCVAR_NONE, "
 ConVar osu_timing_audio_exclude_activity("osu_timing_audio_exclude_activity", false, FCVAR_NONE, "Also treat long slider-body/spinner spans without circle/head opportunities as breaks.");
 ConVar osu_timing_audio_break_seconds("osu_timing_audio_break_seconds", 3.0f, FCVAR_NONE, "Real-play seconds; exclude the entire qualifying break from EMA time.");
 ConVar osu_timing_audio_deadzone("osu_timing_audio_deadzone", 10.0f, FCVAR_NONE, "Silent +/- dead zone in real-play milliseconds.");
-ConVar osu_timing_audio_volume("osu_timing_audio_volume", 0.2f, FCVAR_NONE, "Cue gain, multiplied by effects and master volume. Zero mutes while learning.");
+ConVar osu_timing_audio_volume("osu_timing_audio_volume", 0.2f, FCVAR_NONE, "Independent cue gain, multiplied by master volume. Effects/hitsound volume does not mute it. Zero mutes while learning.");
 ConVar osu_timing_audio_trace("osu_timing_audio_trace", false, FCVAR_NONE, "Log preceding baseline, error, output and actual playback success; diagnostic overhead only when enabled.");
-extern ConVar osu_volume_effects;
 
 static double timingAudioValue(float value, double fallback, double minimum, double maximum)
 {
@@ -107,7 +106,7 @@ void OsuTimingAudioFeedback::onManualHit(long opportunityMS, long delta)
 	if (!m_enabled || !m_prepared || m_beatmap->isPaused() || m_beatmap->isContinueScheduled()) return;
 	const double speed = m_beatmap->getSpeedMultiplier();
 	const auto result = m_state.sample((double)delta / speed, (long)OsuGameRules::getHitWindow300(m_beatmap) / speed, osu_timing_audio_recent.getBool(), opportunityMS);
-	const float volume = timingAudioValue(osu_timing_audio_volume.getFloat(), 0.2, 0.0, 1.0) * osu_volume_effects.getFloat();
+	const float volume = timingAudioValue(osu_timing_audio_volume.getFloat(), 0.2, 0.0, 1.0);
 	bool played = false;
 	if (result.cue != OsuTimingAudioState::SILENT && volume > 0.0f)
 	{
@@ -116,5 +115,5 @@ void OsuTimingAudioFeedback::onManualHit(long opportunityMS, long delta)
 		played = engine->getSound()->play(sound);
 	}
 	if (osu_timing_audio_trace.getBool())
-		debugLog("TimingAudio: map=%ld error=%.3f baseline=%.3f deviation=%.3f preceding=%llu cue=%i played=%i\n", m_beatmap->getCurMusicPosWithOffsets(), (double)delta / speed, result.baselineMS, result.deviationMS, result.precedingSamples, (int)result.cue, (int)played);
+		debugLog("TimingAudio: map=%ld error=%.3f baseline=%.3f deviation=%.3f preceding=%llu cue=%i played=%i gain=%.3f\n", m_beatmap->getCurMusicPosWithOffsets(), (double)delta / speed, result.baselineMS, result.deviationMS, result.precedingSamples, (int)result.cue, (int)played, volume);
 }
