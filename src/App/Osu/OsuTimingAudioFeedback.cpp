@@ -21,6 +21,8 @@ ConVar osu_timing_audio_exclude_activity("osu_timing_audio_exclude_activity", fa
 ConVar osu_timing_audio_break_seconds("osu_timing_audio_break_seconds", 3.0f, FCVAR_NONE, "Real-play seconds; exclude the entire qualifying break from EMA time.");
 ConVar osu_timing_audio_deadzone("osu_timing_audio_deadzone", 10.0f, FCVAR_NONE, "Silent +/- dead zone in real-play milliseconds.");
 ConVar osu_timing_audio_volume("osu_timing_audio_volume", 0.2f, FCVAR_NONE, "Independent cue gain, multiplied by master volume. Effects/hitsound volume does not mute it. Zero mutes while learning.");
+ConVar osu_timing_audio_early_sound("osu_timing_audio_early_sound", "timing-early.wav", FCVAR_NONE, "Early cue filename within sounds/. Changing sounds preserves learning; retry reloads the files.");
+ConVar osu_timing_audio_late_sound("osu_timing_audio_late_sound", "timing-late.wav", FCVAR_NONE, "Late cue filename within sounds/. Supports custom WAVs; a failed change retains the previous cue.");
 ConVar osu_timing_audio_trace("osu_timing_audio_trace", false, FCVAR_NONE, "Log preceding baseline, error, output and actual playback success; diagnostic overhead only when enabled.");
 
 static double timingAudioValue(float value, double fallback, double minimum, double maximum)
@@ -42,6 +44,25 @@ void OsuTimingAudioFeedback::reset()
 {
 	m_state.reset();
 	m_prepared = false;
+	m_earlyPath = "";
+	m_latePath = "";
+}
+
+void OsuTimingAudioFeedback::loadCue(Sound *&sound, UString &attemptedPath, const UString &path)
+{
+	if (path == attemptedPath) return;
+	attemptedPath = path;
+	Sound *replacement = engine->getResourceManager()->loadSound(path, "");
+	if (!replacement->isReady())
+	{
+		debugLog("TimingAudio: couldn't load sounds/%s; %s. Retry after fixing the file.\n", path.toUtf8(), sound != NULL ? "keeping previous cue" : "this direction is silent");
+		engine->getResourceManager()->destroyResource(replacement);
+		return;
+	}
+	replacement->setOverlayable(true);
+	if (sound != NULL) engine->getResourceManager()->destroyResource(sound);
+	sound = replacement;
+	if (osu_timing_audio_trace.getBool()) debugLog("TimingAudio: loaded cue sounds/%s\n", path.toUtf8());
 }
 
 void OsuTimingAudioFeedback::pause()
@@ -86,14 +107,9 @@ void OsuTimingAudioFeedback::update()
 		m_prepared = true;
 	}
 
-	// Immutable, separately owned samples: no changes to song/hitsound voices.
-	if (m_early == NULL)
-	{
-		m_early = engine->getResourceManager()->loadSound("timing-early.wav", "");
-		m_late = engine->getResourceManager()->loadSound("timing-late.wav", "");
-		m_early->setOverlayable(true);
-		m_late->setOverlayable(true);
-	}
+	// Separately owned samples; explicit file changes never reset the estimator.
+	loadCue(m_early, m_earlyPath, osu_timing_audio_early_sound.getString());
+	loadCue(m_late, m_latePath, osu_timing_audio_late_sound.getString());
 	m_state.advance(m_beatmap->getCurMusicPosWithOffsets(), m_beatmap->getSpeedMultiplier());
 }
 
@@ -111,8 +127,11 @@ void OsuTimingAudioFeedback::onManualHit(long opportunityMS, long delta)
 	if (result.cue != OsuTimingAudioState::SILENT && volume > 0.0f)
 	{
 		Sound *sound = result.cue == OsuTimingAudioState::EARLY ? m_early : m_late;
-		sound->setVolume(volume);
-		played = engine->getSound()->play(sound);
+		if (sound != NULL)
+		{
+			sound->setVolume(volume);
+			played = engine->getSound()->play(sound);
+		}
 	}
 	if (osu_timing_audio_trace.getBool())
 		debugLog("TimingAudio: map=%ld error=%.3f baseline=%.3f deviation=%.3f preceding=%llu cue=%i played=%i gain=%.3f\n", m_beatmap->getCurMusicPosWithOffsets(), (double)delta / speed, result.baselineMS, result.deviationMS, result.precedingSamples, (int)result.cue, (int)played, volume);

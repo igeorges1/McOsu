@@ -29,6 +29,7 @@ static void timingAudioIntegration(Osu *osu)
 	static double pausedAt = 0;
 	static bool lifecycleDone = false, resumed = false;
 	static bool skinRequested = false;
+	static bool cuesSwitched = false;
 	static int skipFrames = 0;
 	static std::vector<double> frameMS;
 	static std::vector<double> denseFrameMS;
@@ -62,6 +63,21 @@ static void timingAudioIntegration(Osu *osu)
 	frameMS.push_back(engine->getFrameTime() * 1000.0);
 	auto beatmap = dynamic_cast<OsuBeatmapStandard*>(osu->getSelectedBeatmap());
 	if (beatmap != NULL && beatmap->isWaiting() && beatmap->getCurMusicPosWithOffsets() >= 0) return;
+	// Optional real resource changes: verify sound selection preserves learning,
+	// including a missing replacement. Existing manual hit paths still do sampling.
+	if (beatmap != NULL && !cuesSwitched && beatmap->getCurMusicPosWithOffsets() >= 3000)
+	{
+		const char *early = std::getenv("MCOSU_TIMING_AUDIO_SWITCH_EARLY");
+		const char *late = std::getenv("MCOSU_TIMING_AUDIO_SWITCH_LATE");
+		if (early != NULL || late != NULL)
+		{
+			cuesSwitched = true;
+			if (early != NULL) convar->getConVarByName("osu_timing_audio_early_sound")->setValue(early);
+			if (late != NULL) convar->getConVarByName("osu_timing_audio_late_sound")->setValue(late);
+			debugLog("TimingIntegration: CUE_SWITCH\n");
+			return;
+		}
+	}
 	if (beatmap != NULL && !lifecycleDone && beatmap->getCurMusicPosWithOffsets() >= 6000)
 	{
 		if (std::getenv("MCOSU_TIMING_AUDIO_SEEK") != NULL)
