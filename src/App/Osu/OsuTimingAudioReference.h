@@ -10,7 +10,29 @@ class OsuTimingAudioReference
 {
 public:
 	struct Windows { double hit300, hit100, hit50; }; // raw map-ms getters
-	struct Result { bool valid; double targetMapMS, targetMS, deviationMS; };
+	struct Result { bool valid; double targetMapMS, targetMS, deviationMS; long double preciseTargetMapMS; };
+	struct Band { double lower, upper; };
+
+	static double stored(long double value)
+	{
+		const volatile double result = static_cast<double>(value);
+		return result;
+	}
+
+	// Round completed interval endpoints, not a subtracted deviation and width.
+	// Callers use map units for Beatmap geometry, real ms for learned Recent data.
+	static Band band(long double center, long double halfWidth)
+	{
+		// A zero-width interval is the canonical point also exposed by calculate().
+		if (halfWidth == 0) center = stored(center);
+		return {stored(center - halfWidth), stored(center + halfWidth)};
+	}
+	static int classify(double value, long double center, long double halfWidth)
+	{
+		if (!std::isfinite(value) || !std::isfinite(center) || !std::isfinite(halfWidth) || halfWidth < 0) return 0;
+		const Band edges = band(center, halfWidth);
+		return value < edges.lower ? -1 : value > edges.upper ? 1 : 0;
+	}
 
 	static bool truncateWindow(double value, long &edge)
 	{
@@ -22,7 +44,7 @@ public:
 
 	static Result calculate(long errorMapMS, double speed, long double coordinate, Windows windows)
 	{
-		Result result = {false, 0.0, 0.0, std::numeric_limits<double>::quiet_NaN()};
+		Result result = {false, 0.0, 0.0, std::numeric_limits<double>::quiet_NaN(), 0.0L};
 		if (!std::isfinite(speed) || speed <= 0.0 || !std::isfinite(coordinate) || std::abs(coordinate) > 3.0) return result;
 		if (coordinate == 0.0L)
 		{
@@ -40,8 +62,9 @@ public:
 				: magnitude <= 2.0L ? w300 + (magnitude - 1.0L) * (w100 - w300)
 				: w100 + (magnitude - 2.0L) * (w50 - w100);
 			const long double signedTarget = coordinate < 0.0L ? -target : target;
-			// Canonicalize the target once. Extended-precision interpolation can
-			// otherwise leave a residual at e.g. 2.1 * 50 = 105, even at zero width.
+			result.preciseTargetMapMS = signedTarget;
+			// Canonical diagnostic point/deviation; retain preciseTargetMapMS for
+			// interval construction so nonzero widths do not suffer cancellation.
 			const volatile double targetMapMS = static_cast<double>(signedTarget);
 			result.targetMapMS = targetMapMS;
 			result.targetMS = targetMapMS / speed;

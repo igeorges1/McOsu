@@ -154,7 +154,8 @@ void OsuTimingAudioFeedback::onManualHit(long opportunityMS, long delta)
 	const auto reference = OsuTimingAudioReference::calculate(delta, speed, target,
 		{raw300, target != 0.0 ? OsuGameRules::getHitWindow100(m_beatmap) : 0.0,
 			target != 0.0 ? OsuGameRules::getHitWindow50(m_beatmap) : 0.0});
-	const auto result = m_state.sample((double)delta / speed, window300, recent, opportunityMS, reference.deviationMS);
+	const auto result = m_state.sampleMap(delta, window300, recent, opportunityMS,
+		reference.valid ? reference.preciseTargetMapMS : std::numeric_limits<long double>::quiet_NaN());
 	const float volume = timingAudioValue(osu_timing_audio_volume.getFloat(), 0.2, 0.0, 1.0);
 	bool played = false;
 	if (result.cue != OsuTimingAudioState::SILENT && volume > 0.0f)

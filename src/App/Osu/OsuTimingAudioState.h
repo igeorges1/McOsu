@@ -6,6 +6,7 @@
 #include <cmath>
 #include <limits>
 #include <vector>
+#include "OsuTimingAudioReference.h"
 
 class OsuTimingAudioState
 {
@@ -145,17 +146,27 @@ public:
 
 	Result sample(double errorMS, double window300MS, bool recent, double opportunityMS)
 	{
-		return sample(errorMS, window300MS, recent, opportunityMS, errorMS);
+		// Unshifted, already-converted inputs; the game uses sampleMap below.
+		return sampleInternal(errorMS, Window{window300MS, 1.0}, recent, opportunityMS, errorMS, false, 0, 0);
 	}
 
-	// The adapter computes shifted Beatmap deviation in map units before dividing
-	// by rate. Original error remains the sole learning input in every mode.
-	Result sample(double errorMS, double window300MS, bool recent, double opportunityMS, double beatmapDeviationMS)
+	// Production path retains the original hit and target for endpoint comparison.
+	Result sampleMap(double errorMapMS, Window window, bool recent, double opportunityMS, long double targetMapMS)
 	{
-		return sample(errorMS, Window{window300MS, 1.0}, recent, opportunityMS, beatmapDeviationMS);
+		const double errorMS = errorMapMS / window.speed;
+		const double deviationMS = targetMapMS == 0 ? errorMS
+			: OsuTimingAudioReference::stored((static_cast<long double>(errorMapMS) - OsuTimingAudioReference::stored(targetMapMS)) / window.speed);
+		return sampleInternal(errorMS, window, recent, opportunityMS, deviationMS, true, errorMapMS, targetMapMS);
 	}
 
-	Result sample(double errorMS, Window window, bool recent, double opportunityMS, double beatmapDeviationMS)
+	double getBaselineMS() const { return m_baselineMS; }
+	double getVarianceMS2() const { return m_varianceMS2; }
+	double getActiveMS() const { return m_activeMS; }
+	unsigned long long getSamples() const { return m_samples; }
+
+private:
+	Result sampleInternal(double errorMS, Window window, bool recent, double opportunityMS, double beatmapDeviationMS,
+		bool mapComparison, double errorMapMS, long double targetMapMS)
 	{
 		const double window300MS = std::isfinite(window.speed) && window.speed > 0.0
 			? window.mapMS / window.speed : std::numeric_limits<double>::quiet_NaN();
@@ -182,14 +193,26 @@ public:
 			|| !std::isfinite(window.speed) || window.speed <= 0.0) return result;
 		// i686 x87 may keep a product's excess precision across an inline return.
 		// Compare the stored double width exposed by Result, including its boundary.
-		const volatile double halfWidthMS = bandHalfWidth(window, result.fixedFallback);
+		long double mapHalfWidthMS = 0;
+		const volatile double halfWidthMS = bandHalfWidth(window, result.fixedFallback, mapHalfWidthMS);
 		result.halfWidthMS = halfWidthMS;
 		const bool ready = !recent || (m_samples > 0 && (!m_config.silentStartup || m_samples >= 8));
 		const bool inside300 = !m_config.require300 || (m_samples > 0 && std::abs(m_baselineMS) <= window300MS);
 		if (ready && inside300)
 		{
-			if (result.deviationMS < -result.halfWidthMS) result.cue = EARLY;
-			else if (result.deviationMS > result.halfWidthMS) result.cue = LATE;
+			if (mapComparison && (m_config.bandMode != FIXED_MS || (!recent && targetMapMS != 0)))
+			{
+				// Recent's learned quantities already live in real-play units.
+				// Beatmap geometry stays in map units until its endpoints are rounded.
+				result.cue = static_cast<Cue>(recent
+					? OsuTimingAudioReference::classify(OsuTimingAudioReference::stored(errorMS), m_baselineMS, result.halfWidthMS)
+					: OsuTimingAudioReference::classify(errorMapMS, targetMapMS, mapHalfWidthMS));
+			}
+			else
+			{
+				if (result.deviationMS < -result.halfWidthMS) result.cue = EARLY;
+				else if (result.deviationMS > result.halfWidthMS) result.cue = LATE;
+			}
 		}
 
 		// A late departure may be judged after a rest has started but before its
@@ -215,37 +238,35 @@ public:
 		return result;
 	}
 
-	double getBaselineMS() const { return m_baselineMS; }
-	double getVarianceMS2() const { return m_varianceMS2; }
-	double getActiveMS() const { return m_activeMS; }
-	unsigned long long getSamples() const { return m_samples; }
-
-private:
-	static double fractionalWidth(Window window, long double fraction)
+	static long double fractionalMapWidth(Window window, long double fraction)
 	{
-		// Match reference mapping: canonical map quantity, THEN audio-rate conversion.
+		// Retain entered fraction precision until completed interval endpoints.
 		// Multiplying an already rounded real window can exclude a nominal edge.
-		const volatile double mapWidth = static_cast<double>(fraction * window.mapMS);
-		return mapWidth / window.speed;
+		return fraction * window.mapMS;
 	}
 
-	double bandHalfWidth(Window window, bool &fallback) const
+	double bandHalfWidth(Window window, bool &fallback, long double &mapWidth) const
 	{
+		mapWidth = static_cast<long double>(m_config.deadZoneMS) * window.speed;
 		if (m_config.bandMode == FIXED_MS) return m_config.deadZoneMS;
 		if (m_config.bandMode == RELATIVE_300)
 		{
-			const double width = fractionalWidth(window, m_config.relativeFraction);
-			if (std::isfinite(width) && width >= 0.0) return width;
+			const long double candidate = fractionalMapWidth(window, m_config.relativeFraction);
+			const double width = OsuTimingAudioReference::stored(candidate / window.speed);
+			if (std::isfinite(width) && width >= 0.0) { mapWidth = candidate; return width; }
 		}
 		else if (m_config.bandMode == ADAPTIVE_SPREAD && m_samples >= 2
 			&& std::isfinite(m_varianceMS2) && m_varianceMS2 >= 0.0)
 		{
-			const double low = fractionalWidth(window, m_config.adaptiveMinFraction);
-			const double high = fractionalWidth(window, m_config.adaptiveMaxFraction);
-			const double width = m_config.adaptiveScale * std::sqrt(m_varianceMS2);
+			const long double low = fractionalMapWidth(window, m_config.adaptiveMinFraction);
+			const long double high = fractionalMapWidth(window, m_config.adaptiveMaxFraction);
+			const long double width = m_config.adaptiveScale * std::sqrt(m_varianceMS2) * window.speed;
 			if (std::isfinite(low) && std::isfinite(high) && std::isfinite(width)
 				&& low >= 0.0 && high >= low && width >= 0.0)
-				return std::max(low, std::min(high, width));
+			{
+				mapWidth = std::max(low, std::min(high, width));
+				return mapWidth / window.speed;
+			}
 		}
 		fallback = true;
 		return m_config.deadZoneMS;
