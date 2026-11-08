@@ -76,5 +76,20 @@ int main()
 				state.configure(config); state.sampleMap(10, {50, rate}, true, 0, 0); state.sampleMap(10, {50, rate}, true, 0, 0);
 				CHECK(state.sampleMap(hit, {50, rate}, true, 0, 0).cue == (hit < 0 ? State::EARLY : hit > 20 ? State::LATE : State::SILENT));
 			}
+	// Gate compares the stored preceding baseline with a stored current window.
+	// Opposite signed current hits must cue at the inclusive 300 baseline edge;
+	// one representable baseline step beyond it must mute while still learning.
+	for (double rate : {.5, .75, 1.0, 1.5, (double)2.3f})
+		for (double sign : {-1.0, 1.0})
+			for (bool outside : {false, true})
+			{
+				State state; State::Config config; config.require300 = true; state.configure(config);
+				const volatile double edge = 50 / rate;
+				const double baseline = outside ? std::nextafter(sign * edge, sign * 1000) : sign * edge;
+				CHECK(state.sample(baseline, edge, false).cue == State::SILENT);
+				const auto result = state.sampleMap(-sign * 50, {50, rate}, false, 0, 0);
+				CHECK(result.cue == (outside ? State::SILENT : sign < 0 ? State::LATE : State::EARLY));
+				CHECK(result.precedingSamples == 1 && state.getSamples() == 2);
+			}
 	std::printf("PASS: %u mixed fractional target/width/rate endpoint and outward-neighbor cases; review defaults and zero-width targets\n", cases);
 }

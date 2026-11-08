@@ -168,7 +168,9 @@ private:
 	Result sampleInternal(double errorMS, Window window, bool recent, double opportunityMS, double beatmapDeviationMS,
 		bool mapComparison, double errorMapMS, long double targetMapMS)
 	{
-		const double window300MS = std::isfinite(window.speed) && window.speed > 0.0
+		// The baseline is stored as double; its inclusive gate needs the same
+		// precision, not an excess-precision x87 quotient at the current edge.
+		const volatile double window300MS = std::isfinite(window.speed) && window.speed > 0.0
 			? window.mapMS / window.speed : std::numeric_limits<double>::quiet_NaN();
 		// An accepted early hit belongs to the opportunity at the END of a gap.
 		// Resolve its scheduled boundary before evaluating/updating this sample.
