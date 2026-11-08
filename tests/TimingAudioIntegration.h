@@ -18,6 +18,7 @@
 #include <cstdlib>
 #include <vector>
 #include <algorithm>
+#include "TimingAudioSettingsIntegration.h"
 
 static void timingAudioIntegration(Osu *osu)
 {
@@ -64,6 +65,7 @@ static void timingAudioIntegration(Osu *osu)
 	frameMS.push_back(engine->getFrameTime() * 1000.0);
 	auto beatmap = dynamic_cast<OsuBeatmapStandard*>(osu->getSelectedBeatmap());
 	if (beatmap != NULL && beatmap->isWaiting() && beatmap->getCurMusicPosWithOffsets() >= 0) return;
+	if (timingAudioSettingsIntegration(osu, index, beatmap != NULL && !beatmap->isLoading() && beatmap->getCurMusicPosWithOffsets() >= 1000)) return;
 	// Optional real resource changes: verify sound selection preserves learning,
 	// including a missing replacement. Existing manual hit paths still do sampling.
 	if (beatmap != NULL && !cuesSwitched && beatmap->getCurMusicPosWithOffsets() >= 3000)

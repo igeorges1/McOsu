@@ -19,6 +19,7 @@
 #include "SteamworksInterface.h"
 #include "Mouse.h"
 #include "File.h"
+#include "Sound.h"
 
 #include "CBaseUIContainer.h"
 #include "CBaseUIScrollView.h"
@@ -831,6 +832,7 @@ OsuOptionsMenu::OsuOptionsMenu(Osu *osu) : OsuScreenBackable(osu)
 
 	//**************************************************************************************************************************//
 
+	addTimingAudioOptions();
 	m_skinSection = addSection("Skin");
 
 	addSubSection("Skin");
@@ -1294,6 +1296,8 @@ OsuOptionsMenu::OsuOptionsMenu(Osu *osu) : OsuScreenBackable(osu)
 
 OsuOptionsMenu::~OsuOptionsMenu()
 {
+	for (Sound *sound : m_timingAudioPreview)
+		if (sound != NULL) engine->getResourceManager()->destroyResource(sound);
 	SAFE_DELETE(m_container);
 }
 
@@ -1465,6 +1469,7 @@ void OsuOptionsMenu::update()
 		m_container->stealFocus();
 
 	m_container->update();
+	updateTimingAudioEditor();
 
 	// force context menu focus
 	if (m_contextMenu->isVisible())
@@ -1613,6 +1618,12 @@ void OsuOptionsMenu::update()
 void OsuOptionsMenu::onKeyDown(KeyboardEvent &e)
 {
 	if (!m_bVisible) return;
+	if (e == KEY_RETURN && engine->getKeyboard()->isControlDown() && timingAudioEditing())
+	{
+		onTimingAudioApply();
+		e.consume();
+		return;
+	}
 
 	m_container->onKeyDown(e);
 	if (e.isConsumed()) return;
@@ -1805,7 +1816,13 @@ void OsuOptionsMenu::setVisibleInt(bool visible, bool fromOnBack)
 	m_bVisible = visible;
 
 	if (visible)
+	{
+		syncTimingAudio(OsuTimingAudioSettings::capture());
+		m_timingAudioConfirm.clear();
+		m_timingAudioStatus->setText("Current game settings. Edit values, then Apply.");
+		m_timingAudioStatus->setTextColor(0xffffffff);
 		updateLayout();
+	}
 	else
 	{
 		m_contextMenu->setVisible2(false);
@@ -4088,6 +4105,8 @@ void OsuOptionsMenu::save()
 	std::vector<ConVar*> manualConCommands;
 	std::vector<ConVar*> manualConVars;
 	std::vector<ConVar*> removeConCommands;
+	for (const auto &setting : OsuTimingAudioSettings::capture())
+		manualConVars.push_back(convar->getConVarByName(setting.first.c_str()));
 
 	manualConVars.push_back(convar->getConVarByName("osu_songbrowser_sortingtype"));
 	manualConVars.push_back(convar->getConVarByName("osu_songbrowser_scores_sortingtype"));

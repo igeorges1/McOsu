@@ -29,6 +29,7 @@ ConVar osu_timing_audio_deadzone_adaptive_scale("osu_timing_audio_deadzone_adapt
 ConVar osu_timing_audio_deadzone_adaptive_min("osu_timing_audio_deadzone_adaptive_min", 0.1f, FCVAR_NONE, "Adaptive minimum half-width as a fraction of the current 300 half-window.");
 ConVar osu_timing_audio_deadzone_adaptive_max("osu_timing_audio_deadzone_adaptive_max", 1.0f, FCVAR_NONE, "Adaptive maximum half-width as a fraction of the current 300 half-window. First two hits use fixed width.");
 ConVar osu_timing_audio_volume("osu_timing_audio_volume", 0.2f, FCVAR_NONE, "Independent cue gain, multiplied by master volume. Effects/hitsound volume does not mute it. Zero mutes while learning.");
+ConVar osu_timing_audio_muted("osu_timing_audio_muted", false, FCVAR_NONE, "Mute training cues without changing gain or stopping learning. Feature off still resets learning.");
 ConVar osu_timing_audio_early_sound("osu_timing_audio_early_sound", "timing-early.wav", FCVAR_NONE, "Early cue filename within sounds/. Changing sounds preserves learning; retry reloads the files.");
 ConVar osu_timing_audio_late_sound("osu_timing_audio_late_sound", "timing-late.wav", FCVAR_NONE, "Late cue filename within sounds/. Supports custom WAVs; a failed change retains the previous cue.");
 ConVar osu_timing_audio_trace("osu_timing_audio_trace", false, FCVAR_NONE, "Log preceding baseline, error, output and actual playback success; diagnostic overhead only when enabled.");
@@ -156,7 +157,7 @@ void OsuTimingAudioFeedback::onManualHit(long opportunityMS, long delta)
 			target != 0.0 ? OsuGameRules::getHitWindow50(m_beatmap) : 0.0});
 	const auto result = m_state.sampleMap(delta, window300, recent, opportunityMS,
 		reference.valid ? reference.preciseTargetMapMS : std::numeric_limits<long double>::quiet_NaN());
-	const float volume = timingAudioValue(osu_timing_audio_volume.getFloat(), 0.2, 0.0, 1.0);
+	const float volume = osu_timing_audio_muted.getBool() ? 0.0f : timingAudioValue(osu_timing_audio_volume.getFloat(), 0.2, 0.0, 1.0);
 	bool played = false;
 	if (result.cue != OsuTimingAudioState::SILENT && volume > 0.0f)
 	{
