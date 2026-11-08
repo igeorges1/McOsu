@@ -6,6 +6,7 @@
 #include "ResourceManager.h"
 #include "Sound.h"
 #include "SoundEngine.h"
+#include "Font.h"
 #include "CBaseUICheckbox.h"
 #include "CBaseUITextbox.h"
 #include "CBaseUILabel.h"
@@ -24,12 +25,15 @@ void OsuOptionsMenu::addTimingAudioOptions()
 	const size_t firstElement = m_elements.size();
 	addSubSection("Timing Audio");
 	addLabel("Manual standard circles and slider heads.");
-	addLabel("Ctrl+O during play; search Timing Audio to return here.");
-	addLabel("Edit settings, then Apply. Mute below acts immediately.");
-	addLabel("Ctrl+Enter applies while editing Timing Audio.");
-	addLabel("Pause first for longer edits while music is running.");
-	addLabel("Closing without Apply discards edits. Use decimal points.");
+	addLabel("Ctrl+O during play opens options.");
+	addLabel("Search Timing Audio to return here.");
+	addLabel("Edit, then Apply. Ctrl+Enter also applies.");
+	addLabel("Mute is immediate and keeps learning.");
+	addLabel("Pause first for longer edits.");
+	addLabel("Closing without Apply discards edits.");
+	addLabel("Use decimal points.");
 	m_timingAudioMuteButton = addButton("Mute training cues (keep learning)");
+	m_timingAudioMuteButton->setText("Mute cues (keep learning)");
 	m_timingAudioMuteButton->setClickCallback(fastdelegate::MakeDelegate(this, &OsuOptionsMenu::onTimingAudioMute));
 	m_elements.back().searchTags = "timing audio mute";
 	m_timingAudioStatus = addLabel("Current game settings.");
@@ -57,15 +61,19 @@ void OsuOptionsMenu::addTimingAudioOptions()
 		m_elements.back().searchTags = tags;
 		m_timingAudioFields.push_back(field);
 	}
-	addLabel("Adaptation, activity and threshold changes restart learning.");
-	addLabel("Target, reference, width, gain and cue changes retain it.");
-	addLabel("Target: 0 centre; +/-1 at 300, +/-2 at 100, +/-3 at 50.");
-	addLabel("Negative target = early. Gate stays at actual map zero.");
-	addLabel("Adaptive uses fixed width for its first two eligible hits.");
-	addLabel("Same-filename cue edits reload on map retry.");
+	addLabel("Adaptation, activity, threshold: reset.");
+	addLabel("Target, reference, width, cues: retain.");
+	addLabel("Target: 0 centre; negative is early.");
+	addLabel("+/-1 at 300; +/-2 at 100; +/-3 at 50.");
+	addLabel("Gate checks preceding baseline at zero.");
+	addLabel("Startup off: Recent cues from hit 2.");
+	addLabel("Adaptive starts with two fixed-width hits.");
+	addLabel("Cue gain ignores Effects; uses Master.");
+	addLabel("Retry to reload edits to the same file.");
 	addButton("Apply timing settings to game")->setClickCallback(fastdelegate::MakeDelegate(this, &OsuOptionsMenu::onTimingAudioApply));
 	m_elements.back().searchTags = "timing audio apply target gain reference width adaptive half-life startup gate break cue";
 	addButton("Timing defaults into editor (then Apply)")->setClickCallback(fastdelegate::MakeDelegate(this, &OsuOptionsMenu::onTimingAudioDefaults));
+	static_cast<CBaseUIButton*>(m_elements.back().elements[0])->setText("Put defaults in editor (then Apply)");
 	m_elements.back().searchTags = "timing audio defaults";
 	m_timingAudioFileButtons[0] = addButton("Choose available early cue...");
 	m_timingAudioFileButtons[0]->setClickCallback(fastdelegate::MakeDelegate(this, &OsuOptionsMenu::onTimingAudioEarlyFile));
@@ -78,18 +86,22 @@ void OsuOptionsMenu::addTimingAudioOptions()
 	addButton("Preview draft late cue")->setClickCallback(fastdelegate::MakeDelegate(this, &OsuOptionsMenu::onTimingAudioPreviewLate));
 	m_elements.back().searchTags = "timing audio preview late";
 	addSubSection("Timing Audio Profiles");
-	addLabel("Profiles contain timing settings only, not maps, skin or mix.");
-	addLabel("Learned timing is not saved in profiles.");
-	addLabel("Apply first; Save captures the settings currently in the game.");
+	addLabel("Profiles store timing settings only.");
+	addLabel("Maps, skin and mix stay as they are.");
+	addLabel("Learned timing is not saved.");
+	addLabel("Apply edits before saving a profile.");
 	addLabel("Profile name:");
 	m_timingAudioProfileName = addTextbox("", (ConVar*)NULL);
 	m_elements.back().searchTags = "timing audio profile name";
 	addButton("Save applied settings as named profile")->setClickCallback(fastdelegate::MakeDelegate(this, &OsuOptionsMenu::onTimingAudioSaveProfile));
+	static_cast<CBaseUIButton*>(m_elements.back().elements[0])->setText("Save applied profile");
 	m_elements.back().searchTags = "timing audio profile save";
 	m_timingAudioLoadButton = addButton("Load and apply saved profile...");
+	m_timingAudioLoadButton->setText("Load and apply profile...");
 	m_timingAudioLoadButton->setClickCallback(fastdelegate::MakeDelegate(this, &OsuOptionsMenu::onTimingAudioLoadProfile));
 	m_elements.back().searchTags = "timing audio profile load";
 	addButton("Delete named profile (confirmation required)")->setClickCallback(fastdelegate::MakeDelegate(this, &OsuOptionsMenu::onTimingAudioDeleteProfile));
+	static_cast<CBaseUIButton*>(m_elements.back().elements[0])->setText("Delete named profile...");
 	m_elements.back().searchTags = "timing audio profile delete";
 	syncTimingAudio(OsuTimingAudioSettings::capture());
 	for (size_t i = firstElement; i < m_elements.size(); ++i) m_elements[i].searchTags.append(" timing audio");
@@ -139,12 +151,12 @@ void OsuOptionsMenu::updateTimingAudioEditor()
 	if (editState != m_timingAudioEditState)
 	{
 		m_timingAudioEditState = editState;
-		m_timingAudioStatus->setText(editState == 2 ? "Unapplied edits include settings that can restart learning."
-			: editState == 1 ? "Unapplied edits. Click Apply to change the game." : "Editor matches current game settings.");
+		m_timingAudioStatus->setText(editState == 2 ? "Unapplied edits; learning can restart."
+			: editState == 1 ? "Unapplied edits. Apply to use." : "Editor matches game settings.");
 		m_timingAudioStatus->setTextColor(0xffffffff);
 	}
 	m_timingAudioMuteButton->setText(convar->getConVarByName("osu_timing_audio_muted")->getBool()
-		? "Unmute training cues (keep learning)" : "Mute training cues (keep learning)");
+		? "Unmute cues (keep learning)" : "Mute cues (keep learning)");
 	for (const TimingAudioField &field : m_timingAudioFields)
 	{
 		if (field.textbox == NULL) continue;
@@ -162,9 +174,22 @@ void OsuOptionsMenu::updateTimingAudioEditor()
 
 void OsuOptionsMenu::timingAudioStatus(UString text, bool error)
 {
-	m_timingAudioStatus->setText(text);
+	UString visible = text;
+	const float available = m_timingAudioStatus->getSize().x - 10;
+	if (available > 0 && m_timingAudioStatus->getFont()->getStringWidth(visible) > available)
+	{
+		while (visible.length() > 0)
+		{
+			UString candidate = visible;
+			candidate.append("...");
+			if (m_timingAudioStatus->getFont()->getStringWidth(candidate) <= available) break;
+			visible = visible.substr(0, visible.length() - 1);
+		}
+		visible.append("...");
+	}
+	m_timingAudioStatus->setText(visible);
 	m_timingAudioStatus->setTextColor(error ? 0xffff6666 : 0xffffffff);
-	m_osu->getNotificationOverlay()->addNotification(text, error ? 0xffff6666 : 0xffffffff, false, 1.5f);
+	if (error) m_osu->getNotificationOverlay()->addNotification(text, 0xffff6666, false, 1.5f);
 }
 
 void OsuOptionsMenu::onTimingAudioApply()
@@ -174,14 +199,14 @@ void OsuOptionsMenu::onTimingAudioApply()
 	if (!error.empty()) { timingAudioStatus(error.c_str(), true); return; }
 	syncTimingAudio(OsuTimingAudioSettings::capture());
 	m_timingAudioConfirm.clear();
-	timingAudioStatus("Applied to game. Existing learning/reset rules apply.");
+	timingAudioStatus("Applied to game.");
 }
 
 void OsuOptionsMenu::onTimingAudioDefaults()
 {
 	m_timingAudioConfirm.clear();
 	syncTimingAudio(OsuTimingAudioSettings::capture(true));
-	timingAudioStatus("Defaults in editor; click Apply to use them.");
+	timingAudioStatus("Defaults in editor. Apply to use.");
 }
 
 void OsuOptionsMenu::onTimingAudioMute()
@@ -189,7 +214,7 @@ void OsuOptionsMenu::onTimingAudioMute()
 	m_timingAudioConfirm.clear();
 	ConVar *mute = convar->getConVarByName("osu_timing_audio_muted");
 	mute->setValue(!mute->getBool());
-	timingAudioStatus(mute->getBool() ? "Cues muted. Enabled timing feedback keeps learning." : "Cues unmuted. Cue gain is unchanged.");
+	timingAudioStatus(mute->getBool() ? "Muted; learning continues if enabled." : "Unmuted; gain unchanged.");
 }
 
 void OsuOptionsMenu::onTimingAudioWidth()
@@ -224,12 +249,12 @@ void OsuOptionsMenu::onTimingAudioSaveProfile()
 	if (profiles.count(name) && (m_timingAudioConfirm != "save:" + name || m_timingAudioConfirmValues != values || engine->getTime() > m_timingAudioConfirmUntil))
 	{
 		m_timingAudioConfirm = "save:" + name; m_timingAudioConfirmValues = values; m_timingAudioConfirmUntil = engine->getTime() + 10;
-		timingAudioStatus("Click Save again within 10 seconds to replace this profile."); return;
+		timingAudioStatus("Click Save again (10s) to overwrite."); return;
 	}
 	profiles[name] = values;
 	error = OsuTimingAudioSettings::writeProfiles(profiles);
 	m_timingAudioConfirm.clear();
-	timingAudioStatus(error.empty() ? UString::format("Saved timing profile: %s", name.c_str()) : UString(error.c_str()), !error.empty());
+	timingAudioStatus(error.empty() ? UString::format("Saved: %s", name.c_str()) : UString(error.c_str()), !error.empty());
 }
 
 void OsuOptionsMenu::onTimingAudioLoadProfile()
@@ -260,7 +285,7 @@ void OsuOptionsMenu::onTimingAudioProfileSelected(UString name, int)
 	syncTimingAudio(OsuTimingAudioSettings::capture());
 	m_timingAudioProfileName->setText(name);
 	m_timingAudioConfirm.clear();
-	timingAudioStatus(UString::format("Loaded and applied timing profile: %s", name.toUtf8()));
+	timingAudioStatus(UString::format("Loaded: %s", name.toUtf8()));
 }
 
 void OsuOptionsMenu::onTimingAudioDeleteProfile()
@@ -273,7 +298,7 @@ void OsuOptionsMenu::onTimingAudioDeleteProfile()
 	if (m_timingAudioConfirm != "delete:" + name || m_timingAudioConfirmValues != profiles.at(name) || engine->getTime() > m_timingAudioConfirmUntil)
 	{
 		m_timingAudioConfirm = "delete:" + name; m_timingAudioConfirmValues = profiles.at(name); m_timingAudioConfirmUntil = engine->getTime() + 10;
-		timingAudioStatus("Click Delete again within 10 seconds to remove this profile."); return;
+		timingAudioStatus("Click Delete again (10s) to confirm."); return;
 	}
 	profiles.erase(name);
 	error = OsuTimingAudioSettings::writeProfiles(profiles);

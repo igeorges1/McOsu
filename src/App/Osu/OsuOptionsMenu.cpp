@@ -50,6 +50,7 @@
 
 #include <iostream>
 #include <fstream>
+#include <sstream>
 
 ConVar osu_options_save_on_back("osu_options_save_on_back", true, FCVAR_NONE);
 ConVar osu_options_high_quality_sliders("osu_options_high_quality_sliders", false, FCVAR_NONE);
@@ -1989,6 +1990,21 @@ void OsuOptionsMenu::updateLayout()
 	bool sectionTitleMatch = false;
 	bool subSectionTitleMatch = false;
 	const std::string search = m_sSearchString.length() > 0 ? m_sSearchString.toUtf8() : "";
+	// Tags keep an editor's label and input together. A query such as
+	// "timing audio cue" can match keywords separated by the field's label.
+	const auto matchesSearchTags = [&search](UString value) {
+		const std::string tags = value.toUtf8();
+		if (tags.empty() || search.empty()) return false;
+		std::istringstream words(search);
+		std::string word;
+		bool any = false;
+		while (words >> word)
+		{
+			any = true;
+			if (!Osu::findIgnoreCase(tags, word)) return false;
+		}
+		return any;
+	};
 	for (int i=0; i<m_elements.size(); i++)
 	{
 		// searching logic happens here:
@@ -2004,8 +2020,6 @@ void OsuOptionsMenu::updateLayout()
 
 		if (m_sSearchString.length() > 0)
 		{
-			const std::string searchTags = m_elements[i].searchTags.toUtf8();
-
 			// if this is a section
 			if (m_elements[i].type == 1)
 			{
@@ -2022,6 +2036,11 @@ void OsuOptionsMenu::updateLayout()
 				{
 					if (m_elements[s].type == 1) // stop at next section
 						break;
+					if (matchesSearchTags(m_elements[s].searchTags))
+					{
+						sectionMatch = true;
+						break;
+					}
 
 					for (int e=0; e<m_elements[s].elements.size(); e++)
 					{
@@ -2049,7 +2068,7 @@ void OsuOptionsMenu::updateLayout()
 				bool subSectionMatch = false;
 
 				const std::string subSectionTitle = m_elements[i].elements[0]->getName().toUtf8();
-				subSectionTitleMatch = Osu::findIgnoreCase(subSectionTitle, search) || Osu::findIgnoreCase(searchTags, search);
+				subSectionTitleMatch = Osu::findIgnoreCase(subSectionTitle, search) || matchesSearchTags(m_elements[i].searchTags);
 
 				if (inSkipSubSection)
 					inSkipSubSection = false;
@@ -2058,6 +2077,11 @@ void OsuOptionsMenu::updateLayout()
 				{
 					if (m_elements[s].type == 2) // stop at next subsection
 						break;
+					if (matchesSearchTags(m_elements[s].searchTags))
+					{
+						subSectionMatch = true;
+						break;
+					}
 
 					for (int e=0; e<m_elements[s].elements.size(); e++)
 					{
@@ -2080,7 +2104,7 @@ void OsuOptionsMenu::updateLayout()
 			bool inSkipContent = false;
 			if (!inSkipSection && !inSkipSubSection)
 			{
-				bool contentMatch = false;
+				bool contentMatch = matchesSearchTags(m_elements[i].searchTags);
 
 				if (m_elements[i].type > 2)
 				{

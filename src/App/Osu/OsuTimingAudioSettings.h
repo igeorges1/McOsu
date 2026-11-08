@@ -19,9 +19,9 @@ public:
 	static const std::vector<Spec> &specs()
 	{
 		static const std::vector<Spec> list = {
-			{"osu_timing_audio", "Enable timing audio (off clears learning)", BOOLEAN, 0, 1, true},
+			{"osu_timing_audio", "Enable timing audio (off resets)", BOOLEAN, 0, 1, true},
 			{"osu_timing_audio_muted", "Mute cues (keep learning)", BOOLEAN, 0, 1, false},
-			{"osu_timing_audio_recent", "Use Recent reference (off = Beatmap)", BOOLEAN, 0, 1, false},
+			{"osu_timing_audio_recent", "Recent reference (off = Beatmap)", BOOLEAN, 0, 1, false},
 			{"osu_timing_audio_target", "Beatmap target (-3..3)", NUMBER, -3, 3, false},
 			{"osu_timing_audio_deadzone_mode", "Silent width", INTEGER, 0, 2, false},
 			{"osu_timing_audio_deadzone", "Fixed / startup half-width (ms)", NUMBER, 0, 1000, false},
@@ -32,12 +32,12 @@ public:
 			{"osu_timing_audio_fixed_hits", "Use hit-count adaptation (off = time)", BOOLEAN, 0, 1, true},
 			{"osu_timing_audio_half_life_seconds", "Time half-life (active seconds)", NUMBER, 0.001L, 3600, true},
 			{"osu_timing_audio_half_life_hits", "Hit-count half-life (hits)", NUMBER, 0.001L, 100000, true},
-			{"osu_timing_audio_silent_startup", "Mute first eight Recent hits (off = from hit 2)", BOOLEAN, 0, 1, false},
-			{"osu_timing_audio_require_300", "Require preceding baseline within actual 300", BOOLEAN, 0, 1, false},
+			{"osu_timing_audio_silent_startup", "Silent eight-hit Recent startup", BOOLEAN, 0, 1, false},
+			{"osu_timing_audio_require_300", "Gate: baseline inside actual 300", BOOLEAN, 0, 1, false},
 			{"osu_timing_audio_restart", "Restart after breaks (off = retain)", BOOLEAN, 0, 1, false},
-			{"osu_timing_audio_exclude_activity", "Treat long bodies/spinners as timing breaks", BOOLEAN, 0, 1, true},
+			{"osu_timing_audio_exclude_activity", "Long bodies/spinners count as breaks", BOOLEAN, 0, 1, true},
 			{"osu_timing_audio_break_seconds", "Break threshold (real-play seconds)", NUMBER, 0.001L, 3600, true},
-			{"osu_timing_audio_volume", "Cue gain (0..1, independent of Effects)", NUMBER, 0, 1, false},
+			{"osu_timing_audio_volume", "Cue gain (0..1)", NUMBER, 0, 1, false},
 			{"osu_timing_audio_early_sound", "Early cue filename inside sounds/", FILENAME, 0, 0, false},
 			{"osu_timing_audio_late_sound", "Late cue filename inside sounds/", FILENAME, 0, 0, false},
 			{"osu_timing_audio_trace", "Diagnostic logging (adds overhead)", BOOLEAN, 0, 1, false}
