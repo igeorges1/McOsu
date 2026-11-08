@@ -19,16 +19,17 @@ public:
 		double breakSeconds = 3.0;
 		double deadZoneMS = 10.0;
 		BandMode bandMode = FIXED_MS;
-		double relativeFraction = 0.2;
-		double adaptiveScale = 1.0;
-		double adaptiveMinFraction = 0.1;
-		double adaptiveMaxFraction = 1.0;
+		long double relativeFraction = 0.2L;
+		long double adaptiveScale = 1.0L;
+		long double adaptiveMinFraction = 0.1L;
+		long double adaptiveMaxFraction = 1.0L;
 		bool silentStartup = false;
 		bool require300 = false;
 		bool restartAfterBreak = false;
 	};
 
 	struct Activity { double startMS, endMS; };
+	struct Window { double mapMS, speed; }; // truncated map window, actual audio rate
 	enum Cue { EARLY = -1, SILENT = 0, LATE = 1 };
 	struct Result
 	{
@@ -151,6 +152,13 @@ public:
 	// by rate. Original error remains the sole learning input in every mode.
 	Result sample(double errorMS, double window300MS, bool recent, double opportunityMS, double beatmapDeviationMS)
 	{
+		return sample(errorMS, Window{window300MS, 1.0}, recent, opportunityMS, beatmapDeviationMS);
+	}
+
+	Result sample(double errorMS, Window window, bool recent, double opportunityMS, double beatmapDeviationMS)
+	{
+		const double window300MS = std::isfinite(window.speed) && window.speed > 0.0
+			? window.mapMS / window.speed : std::numeric_limits<double>::quiet_NaN();
 		// An accepted early hit belongs to the opportunity at the END of a gap.
 		// Resolve its scheduled boundary before evaluating/updating this sample.
 		if (std::isfinite(errorMS) && std::isfinite(window300MS) && window300MS >= 0.0
@@ -163,10 +171,18 @@ public:
 		}
 		Result result = {SILENT, m_baselineMS, recent ? errorMS - m_baselineMS : beatmapDeviationMS,
 			m_samples, m_config.deadZoneMS, m_varianceMS2, false};
-		if (!std::isfinite(errorMS) || !std::isfinite(window300MS) || window300MS < 0.0) return result;
+		if (m_config.bandMode != FIXED_MS)
+		{
+			// New widths and deviations use the same stored-double comparison,
+			// even when the original target0 division remains in an x87 register.
+			const volatile double deviationMS = result.deviationMS;
+			result.deviationMS = deviationMS;
+		}
+		if (!std::isfinite(errorMS) || !std::isfinite(window300MS) || window300MS < 0.0
+			|| !std::isfinite(window.speed) || window.speed <= 0.0) return result;
 		// i686 x87 may keep a product's excess precision across an inline return.
 		// Compare the stored double width exposed by Result, including its boundary.
-		const volatile double halfWidthMS = bandHalfWidth(window300MS, result.fixedFallback);
+		const volatile double halfWidthMS = bandHalfWidth(window, result.fixedFallback);
 		result.halfWidthMS = halfWidthMS;
 		const bool ready = !recent || (m_samples > 0 && (!m_config.silentStartup || m_samples >= 8));
 		const bool inside300 = !m_config.require300 || (m_samples > 0 && std::abs(m_baselineMS) <= window300MS);
@@ -205,19 +221,27 @@ public:
 	unsigned long long getSamples() const { return m_samples; }
 
 private:
-	double bandHalfWidth(double window300MS, bool &fallback) const
+	static double fractionalWidth(Window window, long double fraction)
+	{
+		// Match reference mapping: canonical map quantity, THEN audio-rate conversion.
+		// Multiplying an already rounded real window can exclude a nominal edge.
+		const volatile double mapWidth = static_cast<double>(fraction * window.mapMS);
+		return mapWidth / window.speed;
+	}
+
+	double bandHalfWidth(Window window, bool &fallback) const
 	{
 		if (m_config.bandMode == FIXED_MS) return m_config.deadZoneMS;
 		if (m_config.bandMode == RELATIVE_300)
 		{
-			const double width = m_config.relativeFraction * window300MS;
+			const double width = fractionalWidth(window, m_config.relativeFraction);
 			if (std::isfinite(width) && width >= 0.0) return width;
 		}
 		else if (m_config.bandMode == ADAPTIVE_SPREAD && m_samples >= 2
 			&& std::isfinite(m_varianceMS2) && m_varianceMS2 >= 0.0)
 		{
-			const double low = m_config.adaptiveMinFraction * window300MS;
-			const double high = m_config.adaptiveMaxFraction * window300MS;
+			const double low = fractionalWidth(window, m_config.adaptiveMinFraction);
+			const double high = fractionalWidth(window, m_config.adaptiveMaxFraction);
 			const double width = m_config.adaptiveScale * std::sqrt(m_varianceMS2);
 			if (std::isfinite(low) && std::isfinite(high) && std::isfinite(width)
 				&& low >= 0.0 && high >= low && width >= 0.0)

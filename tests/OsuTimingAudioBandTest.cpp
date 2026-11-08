@@ -131,6 +131,39 @@ int main()
 	const volatile long double zeroBandTarget = 2.1L;
 	const auto exactTarget = OsuTimingAudioReference::calculate(105, 1, zeroBandTarget, {50, 100, 150});
 	CHECK(decimalState.sample(105, 50, false, 0, exactTarget.deviationMS).cue == State::SILENT);
+	// Reviewer repro: multiply decimal fractions in map units before converting
+	// rate. Relative and BOTH adaptive bounds include the same converted edge.
+	for (State::BandMode mode : {State::RELATIVE_300, State::ADAPTIVE_SPREAD})
+		for (double speed : {.75, 1.5, 2.3})
+			for (double sign : {-1.0, 1.0})
+				for (long target : {0L, 1L})
+				{
+					State edgeState; State::Config edgeConfig;
+					const volatile long double fraction = 0.7L;
+					edgeConfig.bandMode = mode; edgeConfig.relativeFraction = fraction;
+					edgeConfig.adaptiveMinFraction = edgeConfig.adaptiveMaxFraction = fraction;
+					edgeState.configure(edgeConfig); edgeState.sample(0, 20, false); edgeState.sample(0, 20, false);
+					const long delta = (long)(sign * (target * 20 + 14));
+					const auto reference = OsuTimingAudioReference::calculate(delta, speed, sign * target, {20, 60, 100});
+					const State::Window window = {20, speed};
+					const auto edge = edgeState.sample(delta / speed, window, false, 0, reference.deviationMS);
+					CHECK(edge.cue == State::SILENT); near(edge.halfWidthMS, 14 / speed);
+					const double outside = std::nextafter(sign * edge.halfWidthMS, sign * 100);
+					CHECK(edgeState.sample(0, window, false, 0, outside).cue == (sign < 0 ? State::EARLY : State::LATE));
+				}
+	State invalidWindow;
+	for (State::BandMode mode : {State::RELATIVE_300, State::ADAPTIVE_SPREAD})
+		for (double sign : {-1.0, 1.0})
+		{
+			State zeroTargetState; State::Config zeroTargetConfig;
+			zeroTargetConfig.bandMode = mode; zeroTargetConfig.relativeFraction = 0.1L;
+			zeroTargetConfig.adaptiveMinFraction = zeroTargetConfig.adaptiveMaxFraction = 0.1L;
+			zeroTargetState.configure(zeroTargetConfig); zeroTargetState.sample(0, 80, false); zeroTargetState.sample(0, 80, false);
+			const auto zeroTarget = OsuTimingAudioReference::calculate((long)(sign * 8), .75, 0, {80, 140, 200});
+			CHECK(zeroTargetState.sample(sign * 8 / .75, State::Window{80, .75}, false, 0, zeroTarget.deviationMS).cue == State::SILENT);
+		}
+	CHECK(invalidWindow.sample(30, State::Window{20, 0}, false, 0, 30).cue == State::SILENT);
+	CHECK(invalidWindow.getSamples() == 0);
 
 	// Qualifying rests must restore matching mean/variance BEFORE the return cue.
 	c.bandMode = State::ADAPTIVE_SPREAD; s.configure(c);
