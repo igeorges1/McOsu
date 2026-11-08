@@ -1,4 +1,5 @@
 #include "OsuTimingAudioFeedback.h"
+#include "OsuTimingAudioReference.h"
 
 #include "Engine.h"
 #include "ConVar.h"
@@ -8,6 +9,7 @@
 #include "OsuBeatmap.h"
 #include "OsuGameRules.h"
 #include "OsuHitObject.h"
+#include <cstdlib>
 
 ConVar osu_timing_audio("osu_timing_audio", false, FCVAR_NONE, "Opt-in timing audio experiment for manual circles and slider heads.");
 ConVar osu_timing_audio_recent("osu_timing_audio_recent", true, FCVAR_NONE, "Recent timing reference; false selects beatmap timing. Switching preserves the baseline.");
@@ -20,6 +22,12 @@ ConVar osu_timing_audio_restart("osu_timing_audio_restart", false, FCVAR_NONE, "
 ConVar osu_timing_audio_exclude_activity("osu_timing_audio_exclude_activity", false, FCVAR_NONE, "Also treat long slider-body/spinner spans without circle/head opportunities as breaks.");
 ConVar osu_timing_audio_break_seconds("osu_timing_audio_break_seconds", 3.0f, FCVAR_NONE, "Real-play seconds; exclude the entire qualifying break from EMA time.");
 ConVar osu_timing_audio_deadzone("osu_timing_audio_deadzone", 10.0f, FCVAR_NONE, "Silent +/- dead zone in real-play milliseconds.");
+ConVar osu_timing_audio_target("osu_timing_audio_target", 0.0f, FCVAR_NONE, "Beatmap reference: 0=center, +/-1=300 edge, +/-2=100 edge, +/-3=50 edge. Recent ignores this setting; scores are unchanged.");
+ConVar osu_timing_audio_deadzone_mode("osu_timing_audio_deadzone_mode", 0, FCVAR_NONE, "0=fixed milliseconds, 1=fraction of current 300 half-window, 2=preceding timing spread. Switching preserves learning.");
+ConVar osu_timing_audio_deadzone_fraction("osu_timing_audio_deadzone_fraction", 0.2f, FCVAR_NONE, "Relative half-width as a fraction of the current 300 half-window.");
+ConVar osu_timing_audio_deadzone_adaptive_scale("osu_timing_audio_deadzone_adaptive_scale", 1.0f, FCVAR_NONE, "Adaptive half-width in preceding population standard deviations. Uses the selected estimator's weights.");
+ConVar osu_timing_audio_deadzone_adaptive_min("osu_timing_audio_deadzone_adaptive_min", 0.1f, FCVAR_NONE, "Adaptive minimum half-width as a fraction of the current 300 half-window.");
+ConVar osu_timing_audio_deadzone_adaptive_max("osu_timing_audio_deadzone_adaptive_max", 1.0f, FCVAR_NONE, "Adaptive maximum half-width as a fraction of the current 300 half-window. First two hits use fixed width.");
 ConVar osu_timing_audio_volume("osu_timing_audio_volume", 0.2f, FCVAR_NONE, "Independent cue gain, multiplied by master volume. Effects/hitsound volume does not mute it. Zero mutes while learning.");
 ConVar osu_timing_audio_early_sound("osu_timing_audio_early_sound", "timing-early.wav", FCVAR_NONE, "Early cue filename within sounds/. Changing sounds preserves learning; retry reloads the files.");
 ConVar osu_timing_audio_late_sound("osu_timing_audio_late_sound", "timing-late.wav", FCVAR_NONE, "Late cue filename within sounds/. Supports custom WAVs; a failed change retains the previous cue.");
@@ -28,6 +36,17 @@ ConVar osu_timing_audio_trace("osu_timing_audio_trace", false, FCVAR_NONE, "Log 
 static double timingAudioValue(float value, double fallback, double minimum, double maximum)
 {
 	return std::isfinite(value) ? std::max(minimum, std::min(maximum, (double)value)) : fallback;
+}
+
+// New coordinate/fraction controls retain the entered decimal precision instead
+// of rounding through ConVar's float (which can move an inclusive cue boundary).
+static long double timingAudioPreciseValue(const ConVar &var, long double fallback, long double minimum, long double maximum)
+{
+	const char *text = var.getString().toUtf8();
+	char *end = NULL;
+	const long double value = std::strtold(text, &end);
+	return end != text && *end == '\0' && std::isfinite(value)
+		? std::max(minimum, std::min(maximum, value)) : fallback;
 }
 
 OsuTimingAudioFeedback::OsuTimingAudioFeedback(OsuBeatmap *beatmap) : m_beatmap(beatmap), m_early(NULL), m_late(NULL), m_enabled(false), m_prepared(false), m_excludeActivity(false), m_breakSeconds(3.0)
@@ -87,6 +106,11 @@ void OsuTimingAudioFeedback::update()
 	config.halfLifeHits = timingAudioValue(osu_timing_audio_half_life_hits.getFloat(), 16.0, 0.001, 100000.0);
 	config.breakSeconds = timingAudioValue(osu_timing_audio_break_seconds.getFloat(), 3.0, 0.001, 3600.0);
 	config.deadZoneMS = timingAudioValue(osu_timing_audio_deadzone.getFloat(), 10.0, 0.0, 1000.0);
+	config.bandMode = static_cast<OsuTimingAudioState::BandMode>((int)timingAudioValue(osu_timing_audio_deadzone_mode.getFloat(), 0.0, 0.0, 2.0));
+	config.relativeFraction = (double)timingAudioPreciseValue(osu_timing_audio_deadzone_fraction, 0.2L, 0.0L, 10.0L);
+	config.adaptiveScale = (double)timingAudioPreciseValue(osu_timing_audio_deadzone_adaptive_scale, 1.0L, 0.0L, 10.0L);
+	config.adaptiveMinFraction = (double)timingAudioPreciseValue(osu_timing_audio_deadzone_adaptive_min, 0.1L, 0.0L, 10.0L);
+	config.adaptiveMaxFraction = (double)timingAudioPreciseValue(osu_timing_audio_deadzone_adaptive_max, std::max(1.0, config.adaptiveMinFraction), config.adaptiveMinFraction, 10.0L);
 	config.silentStartup = osu_timing_audio_silent_startup.getBool();
 	config.require300 = osu_timing_audio_require_300.getBool();
 	config.restartAfterBreak = osu_timing_audio_restart.getBool();
@@ -121,7 +145,16 @@ void OsuTimingAudioFeedback::onManualHit(long opportunityMS, long delta)
 	update();
 	if (!m_enabled || !m_prepared || m_beatmap->isPaused() || m_beatmap->isContinueScheduled()) return;
 	const double speed = m_beatmap->getSpeedMultiplier();
-	const auto result = m_state.sample((double)delta / speed, (long)OsuGameRules::getHitWindow300(m_beatmap) / speed, osu_timing_audio_recent.getBool(), opportunityMS);
+	const bool recent = osu_timing_audio_recent.getBool();
+	const long double target = recent ? 0.0L : timingAudioPreciseValue(osu_timing_audio_target, 0.0L, -3.0L, 3.0L);
+	const double raw300 = OsuGameRules::getHitWindow300(m_beatmap);
+	long edge300 = 0;
+	const double window300 = OsuTimingAudioReference::truncateWindow(raw300, edge300)
+		? (double)edge300 / speed : std::numeric_limits<double>::quiet_NaN();
+	const auto reference = OsuTimingAudioReference::calculate(delta, speed, target,
+		{raw300, target != 0.0 ? OsuGameRules::getHitWindow100(m_beatmap) : 0.0,
+			target != 0.0 ? OsuGameRules::getHitWindow50(m_beatmap) : 0.0});
+	const auto result = m_state.sample((double)delta / speed, window300, recent, opportunityMS, reference.deviationMS);
 	const float volume = timingAudioValue(osu_timing_audio_volume.getFloat(), 0.2, 0.0, 1.0);
 	bool played = false;
 	if (result.cue != OsuTimingAudioState::SILENT && volume > 0.0f)
@@ -134,5 +167,5 @@ void OsuTimingAudioFeedback::onManualHit(long opportunityMS, long delta)
 		}
 	}
 	if (osu_timing_audio_trace.getBool())
-		debugLog("TimingAudio: map=%ld error=%.3f baseline=%.3f deviation=%.3f preceding=%llu cue=%i played=%i gain=%.3f\n", m_beatmap->getCurMusicPosWithOffsets(), (double)delta / speed, result.baselineMS, result.deviationMS, result.precedingSamples, (int)result.cue, (int)played, volume);
+		debugLog("TimingAudio: map=%ld error=%.3f baseline=%.3f deviation=%.3f preceding=%llu cue=%i played=%i gain=%.3f target_units=%.3f target_ms=%.3f target_valid=%i halfwidth=%.6f variance=%.6f fallback=%i\n", m_beatmap->getCurMusicPosWithOffsets(), (double)delta / speed, result.baselineMS, result.deviationMS, result.precedingSamples, (int)result.cue, (int)played, volume, (double)target, reference.targetMS, (int)reference.valid, result.halfWidthMS, result.varianceMS2, (int)result.fixedFallback);
 }

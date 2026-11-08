@@ -30,6 +30,7 @@ static void timingAudioIntegration(Osu *osu)
 	static bool lifecycleDone = false, resumed = false;
 	static bool skinRequested = false;
 	static bool cuesSwitched = false;
+	static bool referenceSwitched = false;
 	static int skipFrames = 0;
 	static std::vector<double> frameMS;
 	static std::vector<double> denseFrameMS;
@@ -77,6 +78,20 @@ static void timingAudioIntegration(Osu *osu)
 			debugLog("TimingIntegration: CUE_SWITCH\n");
 			return;
 		}
+	}
+	if (beatmap != NULL && !referenceSwitched && beatmap->getCurMusicPosWithOffsets() >= 3000)
+	{
+		const char *settings[][2] = {
+			{"MCOSU_TIMING_AUDIO_SWITCH_TARGET", "osu_timing_audio_target"},
+			{"MCOSU_TIMING_AUDIO_SWITCH_WIDTH", "osu_timing_audio_deadzone_mode"},
+			{"MCOSU_TIMING_AUDIO_SWITCH_REFERENCE", "osu_timing_audio_recent"}
+		};
+		for (const auto &setting : settings)
+		{
+			const char *value = std::getenv(setting[0]);
+			if (value != NULL) convar->getConVarByName(setting[1])->setValue(value);
+		}
+		referenceSwitched = true;
 	}
 	if (beatmap != NULL && !lifecycleDone && beatmap->getCurMusicPosWithOffsets() >= 6000)
 	{
