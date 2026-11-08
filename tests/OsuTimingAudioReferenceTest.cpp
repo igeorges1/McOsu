@@ -36,6 +36,9 @@ int main()
 	CHECK(Ref::calculate(5, 1, -0.1L, od5).deviationMS == 10);
 	CHECK(Ref::calculate(45, 1, 1.1L, od5).deviationMS == -10);
 	CHECK(Ref::calculate(9, 1.5, 1.1L, od10).deviationMS == -10);
+	const volatile long double decimalTarget = 2.1L;
+	CHECK(Ref::calculate(105, 1, decimalTarget, od5).deviationMS == 0);
+	CHECK(Ref::calculate(-105, 1.5, -decimalTarget, od5).deviationMS == 0);
 	near(Ref::calculate(40, 1.5, .5, {80, 140, 200}).deviationMS, 0);
 	const double nan = std::numeric_limits<double>::quiet_NaN();
 	for (long error : {-120L, 0L, 120L})

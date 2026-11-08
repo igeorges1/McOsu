@@ -126,6 +126,11 @@ int main()
 	CHECK(decimalTarget.deviationMS == 15);
 	CHECK(decimalState.sample(-40, 50, false, 0, decimalTarget.deviationMS).cue == State::SILENT);
 	CHECK(decimalState.sample(0, 50, false, 0, -15).cue == State::SILENT);
+	decimalConfig.bandMode = State::FIXED_MS; decimalConfig.deadZoneMS = 0;
+	decimalState.configure(decimalConfig);
+	const volatile long double zeroBandTarget = 2.1L;
+	const auto exactTarget = OsuTimingAudioReference::calculate(105, 1, zeroBandTarget, {50, 100, 150});
+	CHECK(decimalState.sample(105, 50, false, 0, exactTarget.deviationMS).cue == State::SILENT);
 
 	// Qualifying rests must restore matching mean/variance BEFORE the return cue.
 	c.bandMode = State::ADAPTIVE_SPREAD; s.configure(c);

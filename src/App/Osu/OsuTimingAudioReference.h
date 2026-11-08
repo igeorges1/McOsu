@@ -40,10 +40,12 @@ public:
 				: magnitude <= 2.0L ? w300 + (magnitude - 1.0L) * (w100 - w300)
 				: w100 + (magnitude - 2.0L) * (w50 - w100);
 			const long double signedTarget = coordinate < 0.0L ? -target : target;
-			result.targetMapMS = static_cast<double>(signedTarget);
-			result.targetMS = static_cast<double>(signedTarget / speed);
-			// Keep decimal-coordinate precision through subtraction as well.
-			const volatile double deviationMS = static_cast<double>((static_cast<long double>(errorMapMS) - signedTarget) / speed);
+			// Canonicalize the target once. Extended-precision interpolation can
+			// otherwise leave a residual at e.g. 2.1 * 50 = 105, even at zero width.
+			const volatile double targetMapMS = static_cast<double>(signedTarget);
+			result.targetMapMS = targetMapMS;
+			result.targetMS = targetMapMS / speed;
+			const volatile double deviationMS = static_cast<double>((static_cast<long double>(errorMapMS) - targetMapMS) / speed);
 			result.deviationMS = deviationMS;
 		}
 		// Subtract BEFORE conversion: 35/1.5 - 50/1.5 spuriously crosses -10ms.

@@ -136,7 +136,9 @@ static void timingAudioIntegration(Osu *osu)
 		{
 			auto object = objects[index];
 			if (!object->isCircle() && !object->isSlider()) { ++index; continue; }
-			const long error = std::getenv("MCOSU_TIMING_AUDIO_LATE_DEPARTURE") != NULL ? (object->getTime() == 2800 ? 100 : (object->getTime() == 5800 ? 12 : 0))
+			const char *forcedError = std::getenv("MCOSU_TIMING_AUDIO_ERROR");
+			const long error = forcedError != NULL ? std::strtol(forcedError, NULL, 10)
+				: std::getenv("MCOSU_TIMING_AUDIO_LATE_DEPARTURE") != NULL ? (object->getTime() == 2800 ? 100 : (object->getTime() == 5800 ? 12 : 0))
 				: std::getenv("MCOSU_TIMING_AUDIO_EARLY_RETURN") != NULL && object->getTime() == 5700 ? -30
 				: (object->getTime() >= 18000 && object->getTime() < 22000 ? 20 : ((int)index % 5 - 2) * 20);
 			if (beatmap->getCurMusicPosWithOffsets() < object->getTime() + error) break;
