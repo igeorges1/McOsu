@@ -49,6 +49,14 @@ static bool timingAudioSettingsIntegration(Osu *osu, size_t index, bool ready)
 		check(!Settings::apply(invalid).empty() && Settings::capture() == original, "invalid batch changes nothing");
 		invalid = values; invalid["osu_timing_audio_late_sound"] = "timing-intentionally-missing.wav";
 		check(!Settings::apply(invalid).empty() && Settings::capture() == original, "unloadable cue changes nothing");
+		const UString skinRandom = convar->getConVarByName("osu_skin_random")->getString();
+		for (const char *key : {"osu_timing_audio_early_sound", "osu_timing_audio_late_sound"})
+			for (const char *path : {"click;soft.wav", "custom//click.wav", "timing-early.wav;osu_skin_random 1"})
+			{
+				invalid = values; invalid["osu_timing_audio"] = "0"; invalid[key] = path;
+				check(!Settings::apply(invalid).empty() && Settings::capture() == original
+					&& convar->getConVarByName("osu_skin_random")->getString() == skinRandom, "config syntax rejected without timing or unrelated changes");
+			}
 		{
 			std::ofstream bad("cfg/timing-audio-profiles.cfg", std::ios::binary | std::ios::trunc); bad << "malformed profile\n";
 		}

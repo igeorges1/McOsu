@@ -51,6 +51,17 @@ int main()
 	{
 		auto invalid = good; invalid["osu_timing_audio_early_sound"] = path; CHECK(!Settings::validate(invalid).empty());
 	}
+	// The engine saves these values as unquoted config lines, including while
+	// disabled. A profile must not carry filenames that become config syntax.
+	for (const char *key : {"osu_timing_audio_early_sound", "osu_timing_audio_late_sound"})
+		for (const char *path : {"click;soft.wav", "custom//click.wav", "timing-early.wav;osu_skin_random 1"})
+		{
+			auto unsafe = good; unsafe["osu_timing_audio"] = "0"; unsafe[key] = path;
+			CHECK(!Settings::validate(unsafe).empty());
+			Settings::Profiles incoming; incoming["Unsafe filename"] = unsafe;
+			Settings::Profiles retained; retained["Keep"] = good; const auto before = retained;
+			CHECK(!Settings::decode(Settings::encode(incoming), retained).empty() && retained == before);
+		}
 	auto invalid = good; invalid["osu_timing_audio_deadzone_adaptive_max"] = "0.09"; CHECK(!Settings::validate(invalid).empty());
 	invalid = good; invalid.erase("osu_timing_audio_target"); invalid["osu_folder"] = "elsewhere";
 	CHECK(!Settings::validate(invalid).empty());

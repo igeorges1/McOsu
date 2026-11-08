@@ -69,6 +69,10 @@ public:
 			if (text.empty() || text.size() > 1024 || !safeText(text)) return std::string("Invalid value: ") + spec.label;
 			if (spec.type == FILENAME)
 			{
+				// Options save raw name/value config lines. The engine treats these
+				// as command/comment delimiters and has no general quote escaping.
+				if (text.find(';') != std::string::npos || text.find("//") != std::string::npos)
+					return "Cue filenames cannot contain ; or // (config syntax).";
 				if (text[0] == '/' || text[0] == '\\' || text.find(':') != std::string::npos) return "Cue filenames must be relative to sounds/.";
 				std::string path = text;
 				for (char &c : path) if (c == '\\') c = '/';
