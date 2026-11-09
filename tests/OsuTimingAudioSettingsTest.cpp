@@ -30,6 +30,7 @@ int main()
 	const auto good = values(); CHECK(Settings::validate(good).empty());
 	CHECK(Settings::retainOtherConfigStatements("osu_folder_sub_songs osu_timing_audio_practice/") == "osu_folder_sub_songs osu_timing_audio_practice/");
 	CHECK(Settings::retainOtherConfigStatements("osu_folder_sub_songs Practice/; osu_timing_audio 0") == "osu_folder_sub_songs Practice/");
+	CHECK(Settings::retainOtherConfigStatements("osu_folder_sub_songs Practice/; osu_timing_audio 0 // keep") == "osu_folder_sub_songs Practice/;// keep");
 	CHECK(Settings::retainOtherConfigStatements("osu_timing_audio 0; osu_folder_sub_songs Practice/") == " osu_folder_sub_songs Practice/");
 	CHECK(Settings::retainOtherConfigStatements("osu_timing_audio 0; osu_timing_audio_muted 1 // keep this note") == "// keep this note");
 	CHECK(Settings::retainOtherConfigStatements("echo cue; osu_timing_audio 0") == "echo cue; osu_timing_audio 0");

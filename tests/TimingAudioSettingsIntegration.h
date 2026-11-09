@@ -76,7 +76,8 @@ static bool timingAudioSettingsIntegration(Osu *osu, size_t index, bool ready)
 		{
 			std::ofstream user("cfg/osu.cfg", std::ios::app);
 			user << "\nosu_folder_sub_songs osu_timing_audio_practice/\n"
-				<< "osu_folder_sub_songs Practice/; osu_timing_audio 0\n";
+				<< "osu_folder_sub_songs Practice/; osu_timing_audio 0\n"
+				<< "osu_folder_sub_songs Commented/; osu_timing_audio 0 // preserve this note\n";
 		}
 		auto disabledSettings = original; disabledSettings["osu_timing_audio"] = "0";
 		check(Settings::apply(disabledSettings).empty(), "disable before config preservation save");
@@ -85,7 +86,9 @@ static bool timingAudioSettingsIntegration(Osu *osu, size_t index, bool ready)
 			std::ifstream saved("cfg/osu.cfg");
 			const std::string text((std::istreambuf_iterator<char>(saved)), std::istreambuf_iterator<char>());
 			check(text.find("osu_folder_sub_songs osu_timing_audio_practice/\n") != std::string::npos
-				&& text.find("osu_folder_sub_songs Practice/\n") != std::string::npos, "actual disabled save preserves unrelated path/compound statements");
+				&& text.find("osu_folder_sub_songs Practice/\n") != std::string::npos
+				&& text.find("osu_folder_sub_songs Commented/;// preserve this note\n") != std::string::npos,
+				"actual disabled save preserves unrelated path/compound statements and comments");
 		}
 		check(Settings::apply(original).empty(), "restore enabled settings after config preservation");
 		osu->getOptionsMenu()->save(); // same persistence route used by closing options

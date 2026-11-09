@@ -83,7 +83,13 @@ public:
 			start = end + 1;
 		}
 		if (!changed) return line;
-		if (comment != std::string::npos) kept += line.substr(comment);
+		if (comment != std::string::npos)
+		{
+			// A space would become part of the argument; direct concatenation
+			// could make a path's trailing slash start the comment instead.
+			if (!kept.empty()) kept += ';';
+			kept += line.substr(comment);
+		}
 		return kept;
 	}
 	static bool safeText(const std::string &text)
