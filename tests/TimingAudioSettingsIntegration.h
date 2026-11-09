@@ -8,6 +8,7 @@
 #include "OsuTimingAudioSettings.h"
 #include "OsuOptionsMenu.h"
 #include "Environment.h"
+#include "Console.h"
 #include <fstream>
 
 static bool timingAudioSettingsIntegration(Osu *osu, size_t index, bool ready)
@@ -77,18 +78,35 @@ static bool timingAudioSettingsIntegration(Osu *osu, size_t index, bool ready)
 			std::ofstream user("cfg/osu.cfg", std::ios::app);
 			user << "\nosu_folder_sub_songs osu_timing_audio_practice/\n"
 				<< "osu_folder_sub_songs Practice/; osu_timing_audio 0\n"
-				<< "osu_folder_sub_songs Commented/; osu_timing_audio 0 // preserve this note\n";
+				<< "osu_folder_sub_songs Commented/; osu_timing_audio 0 // preserve this note\n"
+				<< "  osu_end_delay_time 2000; osu_timing_audio 0\n";
 		}
-		auto disabledSettings = original; disabledSettings["osu_timing_audio"] = "0";
-		check(Settings::apply(disabledSettings).empty(), "disable before config preservation save");
-		osu->getOptionsMenu()->save();
+		ConVar *endDelay = convar->getConVarByName("osu_end_delay_time");
+		ConVar *songsFolder = convar->getConVarByName("osu_folder_sub_songs");
+		const UString oldDelay = endDelay->getString(), oldSongsFolder = songsFolder->getString();
+		for (bool enabled : {false, true})
 		{
+			auto expected = original; expected["osu_timing_audio"] = enabled ? "1" : "0";
+			check(Settings::apply(expected).empty(), "apply before config preservation save");
+			osu->getOptionsMenu()->save();
+			// Reload only these callback-free fields from the ACTUAL saved file.
+			// Replaying unrelated window/audio/skin callbacks would disturb the
+			// fixture. Preserve the statements and their original save order.
 			std::ifstream saved("cfg/osu.cfg");
-			const std::string text((std::istreambuf_iterator<char>(saved)), std::istreambuf_iterator<char>());
-			check(text.find("osu_folder_sub_songs osu_timing_audio_practice/\n") != std::string::npos
-				&& text.find("osu_folder_sub_songs Practice/\n") != std::string::npos
-				&& text.find("osu_folder_sub_songs Commented/;// preserve this note\n") != std::string::npos,
-				"actual disabled save preserves unrelated path/compound statements and comments");
+			std::ofstream probe("cfg/timing-settings-save-probe.cfg");
+			std::string line;
+			while (std::getline(saved, line))
+				if (line.find("osu_end_delay_time ") == 0 || line.find("  osu_end_delay_time ") == 0
+					|| line.find("osu_folder_sub_songs ") == 0 || line.find("osu_timing_audio ") == 0
+					|| line.find("osu_timing_audio_") == 0)
+					probe << line << "\n";
+			probe.close();
+			endDelay->setValue(750.0f); songsFolder->setValue("Songs/");
+			Console::execConfigFile("timing-settings-save-probe");
+			check(endDelay->getInt() == 2000 && songsFolder->getString() == UString("Commented/"),
+				"actual save/parser reload preserves unrelated compound values");
+			check(Settings::capture() == expected, "authoritative timing settings win after retained compounds");
+			endDelay->setValue(oldDelay); songsFolder->setValue(oldSongsFolder);
 		}
 		check(Settings::apply(original).empty(), "restore enabled settings after config preservation");
 		osu->getOptionsMenu()->save(); // same persistence route used by closing options

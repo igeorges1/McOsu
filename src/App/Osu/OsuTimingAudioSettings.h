@@ -53,44 +53,21 @@ public:
 		value = std::strtold(text.c_str(), &end);
 		return end != text.c_str() && *end == '\0' && std::isfinite(value);
 	}
-	// Remove only statements that set these controls. Existing options filters
-	// search whole lines, which would also delete timing names inside user paths.
-	// Match the pinned console's comments, one leading space and echo exception.
+	// Replace standalone timing lines only. Preserve compound lines verbatim:
+	// removing a semicolon changes the console's recursive whitespace handling.
+	// Current callback-free timing values are written after these retained lines,
+	// so authoritative saved values take precedence over old compound assignments.
 	static std::string retainOtherConfigStatements(const std::string &line)
 	{
 		const size_t comment = line.find("//");
 		const std::string commands = line.substr(0, comment);
-		const bool compound = commands.find("echo") == std::string::npos;
-		std::string kept;
-		bool changed = false, haveStatement = false;
-		for (size_t start = 0; start <= commands.size();)
-		{
-			const size_t end = compound ? commands.find(';', start) : std::string::npos;
-			const std::string statement = commands.substr(start, end == std::string::npos ? end : end - start);
-			const size_t nameStart = !statement.empty() && statement[0] == ' ' ? 1 : 0;
-			const size_t space = statement.find(' ', nameStart);
-			const std::string name = statement.substr(nameStart, space == std::string::npos ? space : space - nameStart);
-			bool timing = false;
-			for (const Spec &spec : specs()) if (name == spec.name) { timing = true; break; }
-			if (timing) changed = true;
-			else
-			{
-				if (haveStatement) kept += ';';
-				kept += statement;
-				haveStatement = true;
-			}
-			if (end == std::string::npos) break;
-			start = end + 1;
-		}
-		if (!changed) return line;
-		if (comment != std::string::npos)
-		{
-			// A space would become part of the argument; direct concatenation
-			// could make a path's trailing slash start the comment instead.
-			if (!kept.empty()) kept += ';';
-			kept += line.substr(comment);
-		}
-		return kept;
+		if (commands.find(';') != std::string::npos) return line;
+		const size_t nameStart = !commands.empty() && commands[0] == ' ' ? 1 : 0;
+		const size_t space = commands.find(' ', nameStart);
+		const std::string name = commands.substr(nameStart, space == std::string::npos ? space : space - nameStart);
+		for (const Spec &spec : specs())
+			if (name == spec.name) return comment == std::string::npos ? "" : line.substr(comment);
+		return line;
 	}
 	static bool safeText(const std::string &text)
 	{

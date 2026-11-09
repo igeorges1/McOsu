@@ -29,15 +29,20 @@ int main()
 {
 	const auto good = values(); CHECK(Settings::validate(good).empty());
 	CHECK(Settings::retainOtherConfigStatements("osu_folder_sub_songs osu_timing_audio_practice/") == "osu_folder_sub_songs osu_timing_audio_practice/");
-	CHECK(Settings::retainOtherConfigStatements("osu_folder_sub_songs Practice/; osu_timing_audio 0") == "osu_folder_sub_songs Practice/");
-	CHECK(Settings::retainOtherConfigStatements("osu_folder_sub_songs Practice/; osu_timing_audio 0 // keep") == "osu_folder_sub_songs Practice/;// keep");
-	CHECK(Settings::retainOtherConfigStatements("osu_timing_audio 0; osu_folder_sub_songs Practice/") == " osu_folder_sub_songs Practice/");
-	CHECK(Settings::retainOtherConfigStatements("osu_timing_audio 0; osu_timing_audio_muted 1 // keep this note") == "// keep this note");
+	for (const char *compound : {"osu_folder_sub_songs Practice/; osu_timing_audio 0",
+		"osu_folder_sub_songs Practice/; osu_timing_audio 0 // keep",
+		"osu_timing_audio 0; osu_folder_sub_songs Practice/",
+		"osu_timing_audio 0; osu_timing_audio_muted 1 // keep this note",
+		"  osu_end_delay_time 2000; osu_timing_audio 0"})
+		CHECK(Settings::retainOtherConfigStatements(compound) == compound);
+	CHECK(Settings::retainOtherConfigStatements("osu_timing_audio 0").empty());
+	CHECK(Settings::retainOtherConfigStatements(" osu_timing_audio 0").empty());
+	CHECK(Settings::retainOtherConfigStatements("osu_timing_audio 0 // keep; note") == "// keep; note");
 	CHECK(Settings::retainOtherConfigStatements("echo cue; osu_timing_audio 0") == "echo cue; osu_timing_audio 0");
 	CHECK(Settings::retainOtherConfigStatements("osu_folder_sub_songs echo; osu_timing_audio 0") == "osu_folder_sub_songs echo; osu_timing_audio 0");
 	CHECK(Settings::retainOtherConfigStatements("osu_timing_audio_extra 1 // osu_timing_audio 0") == "osu_timing_audio_extra 1 // osu_timing_audio 0");
 	CHECK(Settings::retainOtherConfigStatements("  osu_timing_audio 0") == "  osu_timing_audio 0");
-	CHECK(Settings::retainOtherConfigStatements("osu_timing_audio 0;osu_skin_random 1; osu_timing_audio_recent 0") == "osu_skin_random 1");
+	CHECK(Settings::retainOtherConfigStatements("osu_timing_audio 0;osu_skin_random 1; osu_timing_audio_recent 0") == "osu_timing_audio 0;osu_skin_random 1; osu_timing_audio_recent 0");
 	std::set<std::string> names;
 	for (const auto &spec : Settings::specs())
 	{
