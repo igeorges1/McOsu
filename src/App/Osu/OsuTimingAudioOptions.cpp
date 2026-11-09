@@ -93,6 +93,9 @@ void OsuOptionsMenu::addTimingAudioOptions()
 	addLabel("Profile name:");
 	m_timingAudioProfileName = addTextbox("", (ConVar*)NULL);
 	m_elements.back().searchTags = "timing audio profile name";
+	m_timingAudioProfileStatus = addLabel("Profile actions report here.");
+	const size_t profileStatusRow = m_elements.size() - 1;
+	m_elements.back().searchTags = "timing audio profile status";
 	addButton("Save applied settings as named profile")->setClickCallback(fastdelegate::MakeDelegate(this, &OsuOptionsMenu::onTimingAudioSaveProfile));
 	static_cast<CBaseUIButton*>(m_elements.back().elements[0])->setText("Save applied profile");
 	m_elements.back().searchTags = "timing audio profile save";
@@ -103,6 +106,17 @@ void OsuOptionsMenu::addTimingAudioOptions()
 	addButton("Delete named profile (confirmation required)")->setClickCallback(fastdelegate::MakeDelegate(this, &OsuOptionsMenu::onTimingAudioDeleteProfile));
 	static_cast<CBaseUIButton*>(m_elements.back().elements[0])->setText("Delete named profile...");
 	m_elements.back().searchTags = "timing audio profile delete";
+	// A confirmation must survive every search that keeps its action button.
+	for (size_t i = profileStatusRow + 1; i < m_elements.size(); ++i)
+	{
+		m_elements[profileStatusRow].searchTags.append(" ");
+		m_elements[profileStatusRow].searchTags.append(m_elements[i].searchTags);
+		for (CBaseUIElement *element : m_elements[i].elements)
+		{
+			m_elements[profileStatusRow].searchTags.append(" ");
+			m_elements[profileStatusRow].searchTags.append(element->getName());
+		}
+	}
 	syncTimingAudio(OsuTimingAudioSettings::capture());
 	for (size_t i = firstElement; i < m_elements.size(); ++i) m_elements[i].searchTags.append(" timing audio");
 }
@@ -174,21 +188,24 @@ void OsuOptionsMenu::updateTimingAudioEditor()
 
 void OsuOptionsMenu::timingAudioStatus(UString text, bool error)
 {
-	UString visible = text;
-	const float available = m_timingAudioStatus->getSize().x - 10;
-	if (available > 0 && m_timingAudioStatus->getFont()->getStringWidth(visible) > available)
+	for (CBaseUILabel *label : {m_timingAudioStatus, m_timingAudioProfileStatus})
 	{
-		while (visible.length() > 0)
+		UString visible = text;
+		const float available = label->getSize().x - 10;
+		if (available > 0 && label->getFont()->getStringWidth(visible) > available)
 		{
-			UString candidate = visible;
-			candidate.append("...");
-			if (m_timingAudioStatus->getFont()->getStringWidth(candidate) <= available) break;
-			visible = visible.substr(0, visible.length() - 1);
+			while (visible.length() > 0)
+			{
+				UString candidate = visible;
+				candidate.append("...");
+				if (label->getFont()->getStringWidth(candidate) <= available) break;
+				visible = visible.substr(0, visible.length() - 1);
+			}
+			visible.append("...");
 		}
-		visible.append("...");
+		label->setText(visible);
+		label->setTextColor(error ? 0xffff6666 : 0xffffffff);
 	}
-	m_timingAudioStatus->setText(visible);
-	m_timingAudioStatus->setTextColor(error ? 0xffff6666 : 0xffffffff);
 	if (error) m_osu->getNotificationOverlay()->addNotification(text, 0xffff6666, false, 1.5f);
 }
 

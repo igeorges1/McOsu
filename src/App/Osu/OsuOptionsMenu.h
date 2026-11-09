@@ -357,6 +357,7 @@ private:
 	};
 	std::vector<TimingAudioField> m_timingAudioFields;
 	CBaseUILabel *m_timingAudioStatus;
+	CBaseUILabel *m_timingAudioProfileStatus = NULL;
 	CBaseUITextbox *m_timingAudioProfileName;
 	OsuUIButton *m_timingAudioMuteButton, *m_timingAudioWidthButton, *m_timingAudioLoadButton;
 	OsuUIButton *m_timingAudioFileButtons[2];

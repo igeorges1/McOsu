@@ -1822,6 +1822,8 @@ void OsuOptionsMenu::setVisibleInt(bool visible, bool fromOnBack)
 		m_timingAudioConfirm.clear();
 		m_timingAudioStatus->setText("Current game settings. Edit values, then Apply.");
 		m_timingAudioStatus->setTextColor(0xffffffff);
+		m_timingAudioProfileStatus->setText("Profile actions report here.");
+		m_timingAudioProfileStatus->setTextColor(0xffffffff);
 		updateLayout();
 	}
 	else
