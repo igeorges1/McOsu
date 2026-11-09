@@ -78,6 +78,7 @@ public:
 		m_lastMapMS = 0.0;
 		m_havePosition = false;
 		m_gapIndex = 0;
+		m_qualifiedGaps.assign(m_gaps.size(), false);
 		m_gapElapsedMS = 0.0;
 		m_gapQualified = false;
 		m_speed = 1.0;
@@ -131,7 +132,7 @@ public:
 			{
 				++m_gapIndex;
 				m_gapElapsedMS = 0.0;
-				m_gapQualified = false;
+				m_gapQualified = m_gapIndex < m_qualifiedGaps.size() && m_qualifiedGaps[m_gapIndex];
 				m_haveGapCorrection = false;
 			}
 		}
@@ -175,12 +176,24 @@ private:
 		// An accepted early hit belongs to the opportunity at the END of a gap.
 		// Resolve its scheduled boundary before evaluating/updating this sample.
 		if (std::isfinite(errorMS) && std::isfinite(window300MS) && window300MS >= 0.0
-			&& m_havePosition && !m_gapQualified && m_gapIndex < m_gaps.size())
+			&& m_havePosition)
 		{
-			const Activity &gap = m_gaps[m_gapIndex];
-			if (opportunityMS >= gap.endMS && m_lastMapMS >= gap.startMS && m_lastMapMS < gap.endMS
-				&& m_gapElapsedMS + (gap.endMS - m_lastMapMS) / m_speed + 0.000001 >= m_config.breakSeconds * 1000.0)
-				qualifyGap();
+			// At short thresholds, more than one return can be accepted before
+			// the clock traverses the first gap. Apply each policy only once.
+			for (size_t i = m_gapIndex; i < m_gaps.size() && opportunityMS >= m_gaps[i].endMS; ++i)
+			{
+				if (m_qualifiedGaps[i]) continue;
+				const Activity &gap = m_gaps[i];
+				const double elapsed = i == m_gapIndex ? m_gapElapsedMS : 0.0;
+				const double remaining = std::max(0.0, gap.endMS - std::max(m_lastMapMS, gap.startMS)) / m_speed;
+				if (elapsed + remaining + 0.000001 < m_config.breakSeconds * 1000.0) continue;
+				if (i == m_gapIndex) qualifyGap();
+				else
+				{
+					m_qualifiedGaps[i] = true;
+					if (m_config.restartAfterBreak) restartBaseline();
+				}
+			}
 		}
 		Result result = {SILENT, m_baselineMS, recent ? errorMS - m_baselineMS : beatmapDeviationMS,
 			m_samples, m_config.deadZoneMS, m_varianceMS2, false};
@@ -310,11 +323,13 @@ private:
 		}
 		m_lastSampleMS = std::min(m_lastSampleMS, m_activeMS);
 		m_gapQualified = true;
+		m_qualifiedGaps[m_gapIndex] = true;
 		if (m_config.restartAfterBreak) restartBaseline();
 	}
 	void restartBaseline() { m_baselineMS = 0.0; m_varianceMS2 = 0.0; m_samples = 0; m_lastSampleMS = m_activeMS; m_haveGapCorrection = false; }
 	Config m_config;
 	std::vector<Activity> m_gaps;
+	std::vector<bool> m_qualifiedGaps;
 	double m_baselineMS, m_activeMS, m_lastSampleMS, m_lastMapMS, m_gapElapsedMS, m_speed;
 	double m_gapBaselineMS, m_gapSampleClockMS;
 	double m_varianceMS2, m_gapVarianceMS2;

@@ -149,6 +149,27 @@ int main()
 	s.advance(500, 1); r = s.sample(0, 50, true, 500);
 	CHECK(r.precedingSamples == 1); CHECK(r.cue == State::LATE);
 
+	// Accepted returns can precede the START of a short qualifying scheduled
+	// gap. Crossing that gap later must not erase the already-collected seed.
+	for (bool restart : {false, true})
+		for (double rate : {.75, 1.0, 1.25})
+			for (bool consecutive : {false, true})
+			{
+				State state; State::Config config; config.restartAfterBreak = restart;
+				config.breakSeconds = .09 / rate; state.configure(config);
+				state.setActivities(consecutive ? std::vector<State::Activity>{{1000, 1000}, {1100, 1100}, {1200, 1200}, {1240, 1240}}
+					: std::vector<State::Activity>{{1000, 1000}, {1100, 1100}, {1140, 1140}});
+				state.advance(900, rate); CHECK(state.sampleMap(-100, {50, rate}, true, 1000, 0).precedingSamples == 0);
+				state.advance(980, rate); CHECK(state.sampleMap(-120, {50, rate}, true, 1100, 0).precedingSamples == (restart ? 0u : 1u));
+				if (consecutive)
+				{
+					state.advance(1080, rate); CHECK(state.sampleMap(-120, {50, rate}, true, 1200, 0).precedingSamples == (restart ? 0u : 2u));
+				}
+				const double finalMS = consecutive ? 1240 : 1140;
+				state.advance(finalMS, rate);
+				CHECK(state.sampleMap(0, {50, rate}, true, finalMS, 0).precedingSamples == (restart ? 1u : consecutive ? 3u : 2u));
+				near(state.getActiveMS(), 140 / rate);
+			}
 	const auto start = std::chrono::steady_clock::now();
 	s.setActivities({{0, 50000000}});
 	for (int i = 0; i < 1000000; ++i) { s.advance(i * 50.0, 1); s.sample((i % 5 - 2) * 20, 50, true); }
