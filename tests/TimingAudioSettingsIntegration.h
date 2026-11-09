@@ -71,6 +71,23 @@ static bool timingAudioSettingsIntegration(Osu *osu, size_t index, bool ready)
 		check(Settings::readProfiles(loaded).empty() && loaded == profiles, "write failure keeps previous profiles");
 		for (size_t i = 0; i < unrelated.size(); ++i)
 			check(unrelated[i] == convar->getConVarByName(untouched[i])->getString().toUtf8(), "unrelated setting preserved");
+		// Timing names in unrelated values/compound statements must survive the
+		// actual options writer, even with this feature disabled.
+		{
+			std::ofstream user("cfg/osu.cfg", std::ios::app);
+			user << "\nosu_folder_sub_songs osu_timing_audio_practice/\n"
+				<< "osu_folder_sub_songs Practice/; osu_timing_audio 0\n";
+		}
+		auto disabledSettings = original; disabledSettings["osu_timing_audio"] = "0";
+		check(Settings::apply(disabledSettings).empty(), "disable before config preservation save");
+		osu->getOptionsMenu()->save();
+		{
+			std::ifstream saved("cfg/osu.cfg");
+			const std::string text((std::istreambuf_iterator<char>(saved)), std::istreambuf_iterator<char>());
+			check(text.find("osu_folder_sub_songs osu_timing_audio_practice/\n") != std::string::npos
+				&& text.find("osu_folder_sub_songs Practice/\n") != std::string::npos, "actual disabled save preserves unrelated path/compound statements");
+		}
+		check(Settings::apply(original).empty(), "restore enabled settings after config preservation");
 		osu->getOptionsMenu()->save(); // same persistence route used by closing options
 		debugLog("TimingSettings: PROBE_DONE fields=%u profiles=%u failures=%u\n", (unsigned)original.size(), (unsigned)profiles.size(), failures);
 		if (failures != 0) engine->shutdown();

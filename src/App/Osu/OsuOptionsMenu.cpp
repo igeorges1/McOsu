@@ -4129,8 +4129,7 @@ void OsuOptionsMenu::save()
 	std::vector<ConVar*> manualConCommands;
 	std::vector<ConVar*> manualConVars;
 	std::vector<ConVar*> removeConCommands;
-	for (const auto &setting : OsuTimingAudioSettings::capture())
-		manualConVars.push_back(convar->getConVarByName(setting.first.c_str()));
+	const auto timingSettings = OsuTimingAudioSettings::capture();
 
 	manualConVars.push_back(convar->getConVarByName("osu_songbrowser_sortingtype"));
 	manualConVars.push_back(convar->getConVarByName("osu_songbrowser_scores_sortingtype"));
@@ -4175,7 +4174,7 @@ void OsuOptionsMenu::save()
 		{
 			while (in.canRead())
 			{
-				UString uLine = in.readLine();
+				UString uLine = OsuTimingAudioSettings::retainOtherConfigStatements(in.readLine().toUtf8()).c_str();
 				const char *lineChar = uLine.toUtf8();
 				std::string line(lineChar);
 
@@ -4258,6 +4257,8 @@ void OsuOptionsMenu::save()
 	{
 		out << manualConVars[i]->getName().toUtf8() << " " << manualConVars[i]->getString().toUtf8() <<"\n";
 	}
+	for (const auto &setting : timingSettings)
+		out << setting.first << " " << setting.second << "\n";
 
 	// hardcoded (!)
 	out << "monitor " << env->getMonitor() << "\n";
