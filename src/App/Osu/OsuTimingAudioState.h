@@ -202,7 +202,7 @@ private:
 		const bool inside300 = !m_config.require300 || (m_samples > 0 && std::abs(m_baselineMS) <= window300MS);
 		if (ready && inside300)
 		{
-			if (mapComparison && (m_config.bandMode != FIXED_MS || (!recent && targetMapMS != 0)))
+			if (recent || (mapComparison && (m_config.bandMode != FIXED_MS || targetMapMS != 0)))
 			{
 				// Recent's learned quantities already live in real-play units.
 				// Beatmap geometry stays in map units until its endpoints are rounded.

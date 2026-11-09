@@ -9,6 +9,26 @@ typedef OsuTimingAudioReference Ref;
 
 int main()
 {
+	// Fixed Recent uses the same completed real-ms interval as relative and
+	// adaptive startup. Subtraction alone rounds 44/1.25 - 39/1.25 above 4ms.
+	for (double sign : {-1.0, 1.0})
+		for (State::BandMode mode : {State::FIXED_MS, State::RELATIVE_300, State::ADAPTIVE_SPREAD})
+		{
+			State state; State::Config config; config.deadZoneMS = 4;
+			config.bandMode = mode; config.relativeFraction = .1L; state.configure(config);
+			state.sampleMap(sign * 39, {50, 1.25}, true, 0, 0);
+			const auto result = state.sampleMap(sign * 44, {50, 1.25}, true, 0, 0);
+			CHECK(result.precedingSamples == 1 && result.cue == State::SILENT);
+		}
+	for (double sign : {-1.0, 1.0})
+		for (bool outside : {false, true})
+		{
+			State state; State::Config config; config.deadZoneMS = 4; state.configure(config);
+			state.sample(sign * 31.2, 40, true);
+			const double edge = Ref::stored(sign * 31.2L + sign * 4);
+			const double hit = outside ? std::nextafter(edge, sign * 1000) : edge;
+			CHECK(state.sample(hit, 40, true).cue == (outside ? (sign < 0 ? State::EARLY : State::LATE) : State::SILENT));
+		}
 	// Exact independent-review cases, including negative mirrors, non-unit rates,
 	// default adaptive floor and the adjacent representable hit outside each edge.
 	for (State::BandMode mode : {State::RELATIVE_300, State::ADAPTIVE_SPREAD})
