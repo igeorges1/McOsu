@@ -12,6 +12,9 @@ Runs on McEngine: [https://github.com/McKay42/McEngine](https://github.com/McKay
 
 Binaries are available for **Windows**, **Linux**, **macOS** and the **Nintendo Switch**.
 
+For repeatable Windows source builds and a reusable managed runtime, see
+[the build and runtime CLI guide](tools/runtime/README.md).
+
 Note that Linux and macOS support is not as polished as Windows, and some functions like raw input or mouse sensitivity may not work (correctly) there.
 
 ## Notable features which osu! doesn't have (yet) in comparison:
