@@ -1803,6 +1803,9 @@ void Osu::onVolumeChange(int multiplier)
 
 void Osu::onAudioOutputDeviceChange()
 {
+	if (getSelectedBeatmap() != NULL)
+		getSelectedBeatmap()->reloadTimingAudioSounds();
+
 	if (getSelectedBeatmap() != NULL && getSelectedBeatmap()->getMusic() != NULL)
 	{
 		getSelectedBeatmap()->getMusic()->reload();

@@ -20,6 +20,7 @@ class Osu;
 class OsuVR;
 class OsuSkin;
 class OsuHitObject;
+class OsuTimingAudioFeedback;
 
 class OsuDatabaseBeatmap;
 
@@ -82,6 +83,7 @@ public:
 	void setScoreV2ComboPortionMaximum(unsigned long long scoreV2ComboPortionMaximum) {m_iScoreV2ComboPortionMaximum = scoreV2ComboPortionMaximum;}
 
 	// music/sound
+	void reloadTimingAudioSounds();
 	void unloadMusic() {unloadMusicInt();}
 	void setVolume(float volume);
 	void setSpeed(float speed);
@@ -167,6 +169,7 @@ public:
 	void addScorePoints(int points, bool isSpinner = false);
 	void addHealth(double percent, bool isFromHitResult);
 	void updateTimingPoints(long curPos);
+	void playTimingFeedback(long opportunityMS, long delta, OsuScore::HIT result);
 
 	// ILLEGAL:
 	inline const std::vector<OsuHitObject*> &getHitObjectsPointer() const {return m_hitobjects;}
@@ -225,6 +228,7 @@ protected:
 	unsigned long getMusicPositionMSInterpolated();
 
 	Osu *m_osu;
+	OsuTimingAudioFeedback *m_timingAudioFeedback;
 
 	// beatmap state
 	bool m_bIsPlaying;

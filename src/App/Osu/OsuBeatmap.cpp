@@ -37,6 +37,7 @@
 #include "OsuHitObject.h"
 #include "OsuCircle.h"
 #include "OsuSlider.h"
+#include "OsuTimingAudioFeedback.h"
 
 #include <string.h>
 #include <sstream>
@@ -182,6 +183,7 @@ OsuBeatmap::OsuBeatmap(Osu *osu)
 
 	// vars
 	m_osu = osu;
+	m_timingAudioFeedback = new OsuTimingAudioFeedback(this);
 
 	m_bIsPlaying = false;
 	m_bIsPaused = false;
@@ -252,6 +254,7 @@ OsuBeatmap::OsuBeatmap(Osu *osu)
 
 OsuBeatmap::~OsuBeatmap()
 {
+	delete m_timingAudioFeedback;
 	anim->deleteExistingAnimation(&m_fBreakBackgroundFade);
 	anim->deleteExistingAnimation(&m_fHealth2);
 	anim->deleteExistingAnimation(&m_fFailAnim);
@@ -586,6 +589,7 @@ void OsuBeatmap::update()
 		- m_selectedDifficulty2->getOnlineOffset()
 		- (m_selectedDifficulty2->getVersion() < 5 ? osu_old_beatmap_offset.getInt() : 0);
 	updateTimingPoints(m_iCurMusicPosWithOffsets);
+	m_timingAudioFeedback->update();
 
 	// for performance reasons, a lot of operations are crammed into 1 loop over all hitobjects:
 	// update all hitobjects,
@@ -1578,7 +1582,10 @@ void OsuBeatmap::pause(bool quitIfWaiting)
 		m_bIsPaused = !m_bIsPaused;
 
 	if (m_bIsPaused)
+	{
+		m_timingAudioFeedback->pause();
 		onPaused(isFirstPause);
+	}
 	else
 	{
 		m_fPrevUnpauseTime = engine->getTime();
@@ -2327,6 +2334,7 @@ void OsuBeatmap::resetHitObjects(long curPos)
 
 void OsuBeatmap::resetScoreInt()
 {
+	m_timingAudioFeedback->reset();
 	m_fHealth = 1.0;
 	m_fHealth2 = 1.0f;
 	m_bFailed = false;
@@ -2336,6 +2344,17 @@ void OsuBeatmap::resetScoreInt()
 	m_osu->getScore()->reset();
 
 	m_bIsFirstMissSound = true;
+}
+
+void OsuBeatmap::reloadTimingAudioSounds()
+{
+	m_timingAudioFeedback->reloadSounds();
+}
+
+void OsuBeatmap::playTimingFeedback(long opportunityMS, long delta, OsuScore::HIT result)
+{
+	if (result == OsuScore::HIT::HIT_300 || result == OsuScore::HIT::HIT_100 || result == OsuScore::HIT::HIT_50)
+		m_timingAudioFeedback->onManualHit(opportunityMS, delta);
 }
 
 void OsuBeatmap::playMissSound()

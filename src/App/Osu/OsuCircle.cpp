@@ -1032,6 +1032,7 @@ void OsuCircle::onClickEvent(std::vector<OsuBeatmap::CLICK> &clicks)
 			const float targetAngle = rad2deg(atan2(cursorPos.y - pos.y, cursorPos.x - pos.x));
 
 			clicks.erase(clicks.begin());
+			m_beatmap->playTimingFeedback(m_iTime, delta, result);
 			onHit(result, delta, targetDelta, targetAngle);
 		}
 	}

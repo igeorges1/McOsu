@@ -10,6 +10,7 @@
 
 #include "OsuScreenBackable.h"
 #include "OsuNotificationOverlay.h"
+#include "OsuTimingAudioSettings.h"
 
 class Osu;
 
@@ -33,6 +34,7 @@ class CBaseUILabel;
 class CBaseUITextbox;
 
 class ConVar;
+class Sound;
 
 class OsuOptionsMenu : public OsuScreenBackable, public OsuNotificationOverlayKeyListener
 {
@@ -114,6 +116,29 @@ private:
 	void updateSkinNameLabel();
 	void updateNotelockSelectLabel();
 	void updateHPDrainSelectLabel();
+
+	void addTimingAudioOptions();
+	void syncTimingAudio(const OsuTimingAudioSettings::Values &values);
+	OsuTimingAudioSettings::Values timingAudioDraft() const;
+	void updateTimingAudioEditor();
+	void timingAudioStatus(UString text, bool error = false);
+	void onTimingAudioApply();
+	void onTimingAudioDefaults();
+	void onTimingAudioMute();
+	void onTimingAudioWidth();
+	void onTimingAudioWidthSelected(UString text, int id);
+	void onTimingAudioSaveProfile();
+	void onTimingAudioLoadProfile();
+	void onTimingAudioProfileSelected(UString name, int id);
+	void onTimingAudioDeleteProfile();
+	void onTimingAudioPreviewEarly();
+	void onTimingAudioPreviewLate();
+	void previewTimingAudio(bool late);
+	void onTimingAudioEarlyFile();
+	void onTimingAudioLateFile();
+	void chooseTimingAudioFile(bool late);
+	void onTimingAudioFileSelected(UString name, int id);
+	bool timingAudioEditing() const;
 
 	// options
 	void onFullscreenChange(CBaseUICheckbox *checkbox);
@@ -323,6 +348,27 @@ private:
 
 	// drain
 	std::vector<UString> m_drainTypes;
+
+	struct TimingAudioField
+	{
+		const OsuTimingAudioSettings::Spec *spec;
+		CBaseUICheckbox *checkbox;
+		CBaseUITextbox *textbox;
+	};
+	std::vector<TimingAudioField> m_timingAudioFields;
+	CBaseUILabel *m_timingAudioStatus;
+	CBaseUILabel *m_timingAudioProfileStatus = NULL;
+	CBaseUITextbox *m_timingAudioProfileName;
+	OsuUIButton *m_timingAudioMuteButton, *m_timingAudioWidthButton, *m_timingAudioLoadButton;
+	OsuUIButton *m_timingAudioFileButtons[2];
+	int m_timingAudioWidth;
+	int m_timingAudioEditState;
+	OsuTimingAudioSettings::Profiles m_timingAudioProfiles;
+	std::string m_timingAudioConfirm;
+	OsuTimingAudioSettings::Values m_timingAudioConfirmValues;
+	double m_timingAudioConfirmUntil = 0;
+	Sound *m_timingAudioPreview[2] = {NULL, NULL};
+	std::string m_timingAudioFileKey;
 };
 
 #endif
