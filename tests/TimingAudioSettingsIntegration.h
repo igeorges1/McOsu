@@ -88,11 +88,14 @@ static bool timingAudioSettingsIntegration(Osu *osu, size_t index, bool ready)
 			{"osu_end_delay_time 2000; osu_timing_audio_early_sound monitor.wav", "Songs/", 2000},
 			{"osu_folder_sub_songs SkinCollision/; osu_timing_audio_early_sound osu_skin.wav", "SkinCollision/", 750},
 			{"osu_folder_sub_songs SortingCollision/; osu_timing_audio_early_sound osu_songbrowser_sortingtype.wav", "SortingCollision/", 750},
-			{"osu_end_delay_time 2000; osu_timing_audio_early_sound echo monitor.wav", "Songs/", 2000}
+			{"osu_end_delay_time 2000; osu_timing_audio_early_sound echo monitor.wav", "Songs/", 2000},
+			{"osu_end_delay_time 2000; osu_volume_master 0.25; osu_timing_audio 0", "Songs/", 2000},
+			{"osu_folder_sub_songs WidgetCollision/; osu_volume_master 0.25; osu_timing_audio 0", "WidgetCollision/", 750}
 		};
 		ConVar *endDelay = convar->getConVarByName("osu_end_delay_time");
 		ConVar *songsFolder = convar->getConVarByName("osu_folder_sub_songs");
-		const UString oldDelay = endDelay->getString(), oldSongsFolder = songsFolder->getString();
+		ConVar *master = convar->getConVarByName("osu_volume_master");
+		const UString oldDelay = endDelay->getString(), oldSongsFolder = songsFolder->getString(), oldMaster = master->getString();
 		for (bool enabled : {false, true})
 		{
 			auto expected = original; expected["osu_timing_audio"] = enabled ? "1" : "0";
@@ -103,15 +106,16 @@ static bool timingAudioSettingsIntegration(Osu *osu, size_t index, bool ready)
 				for (int round = 0; round < 2; ++round)
 				{
 					osu->getOptionsMenu()->save();
-					// Reload only these callback-free fields from the ACTUAL saved file.
-					// Replaying unrelated window/audio/skin callbacks would disturb the
-					// fixture. Preserve the statements and their original save order.
+					// Reload these fields from the ACTUAL saved file in its original
+					// order. The two widget cases also replay Master, including the
+					// authoritative later widget value. Other window/audio/skin
+					// callbacks are excluded; Master must end at its original value.
 					std::ifstream saved("cfg/osu.cfg");
 					std::ofstream probe("cfg/timing-settings-save-probe.cfg");
 					std::string line;
 					while (std::getline(saved, line))
 						if (line.find("osu_end_delay_time ") == 0 || line.find("  osu_end_delay_time ") == 0
-							|| line.find("osu_folder_sub_songs ") == 0 || line.find("osu_timing_audio ") == 0
+							|| line.find("osu_folder_sub_songs ") == 0 || line.find("osu_volume_master ") == 0 || line.find("osu_timing_audio ") == 0
 							|| line.find("osu_timing_audio_") == 0)
 							probe << line << "\n";
 					probe.close();
@@ -137,7 +141,8 @@ static bool timingAudioSettingsIntegration(Osu *osu, size_t index, bool ready)
 					check(endDelay->getInt() == test.delay && songsFolder->getString() == UString(test.folder),
 						"actual save/parser reload preserves unrelated compound values");
 					check(Settings::capture() == expected, "authoritative timing settings win after retained compounds");
-					endDelay->setValue(oldDelay); songsFolder->setValue(oldSongsFolder);
+					check(master->getString() == oldMaster, "authoritative widget value wins after retained compounds");
+					endDelay->setValue(oldDelay); songsFolder->setValue(oldSongsFolder); master->setValue(oldMaster);
 				}
 			}
 		}

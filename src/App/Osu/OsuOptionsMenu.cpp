@@ -4193,7 +4193,9 @@ void OsuOptionsMenu::save()
 				{
 					if (m_elements[i].cvar != NULL && legacyMatches(m_elements[i].cvar))
 					{
-						if (!timingCommands.empty()) { keepLine = false; break; }
+						// Keep the widget filter's first-command check for compounds too.
+						// A later widget assignment must not erase earlier user commands;
+						// its current value is written after the retained lines below.
 						// we don't want to remove custom convars which start with options entry convars (e.g. osu_rich_presence and osu_rich_presence_dynamic_windowtitle)
 						// so, keep lines which only have partial matches
 
