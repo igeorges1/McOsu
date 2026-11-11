@@ -43,6 +43,17 @@ int main()
 	CHECK(Settings::retainOtherConfigStatements("osu_timing_audio_extra 1 // osu_timing_audio 0") == "osu_timing_audio_extra 1 // osu_timing_audio 0");
 	CHECK(Settings::retainOtherConfigStatements("  osu_timing_audio 0") == "  osu_timing_audio 0");
 	CHECK(Settings::retainOtherConfigStatements("osu_timing_audio 0;osu_skin_random 1; osu_timing_audio_recent 0") == "osu_timing_audio 0;osu_skin_random 1; osu_timing_audio_recent 0");
+	CHECK(Settings::timingCompoundCommandNames("osu_end_delay_time 2000; osu_timing_audio_early_sound monitor.wav")
+		== std::vector<std::string>({"osu_end_delay_time", "osu_timing_audio_early_sound"}));
+	CHECK(Settings::timingCompoundCommandNames("  osu_end_delay_time 2000; osu_timing_audio 0")
+		== std::vector<std::string>({"osu_end_delay_time", "osu_timing_audio"}));
+	CHECK(Settings::timingCompoundCommandNames("osu_timing_audio 0; monitor 1")
+		== std::vector<std::string>({"osu_timing_audio", "monitor"}));
+	CHECK(Settings::timingCompoundCommandNames("osu_timing_audio 0 // ; monitor 1").empty());
+	CHECK(Settings::timingCompoundCommandNames("echo keep; osu_timing_audio 0").empty());
+	CHECK(Settings::timingCompoundCommandNames("osu_end_delay_time 2000; osu_timing_audio 0 // echo")
+		== std::vector<std::string>({"osu_end_delay_time", "osu_timing_audio"}));
+	CHECK(Settings::timingCompoundCommandNames("osu_timing_audio_extra 0; monitor 1").empty());
 	std::set<std::string> names;
 	for (const auto &spec : Settings::specs())
 	{

@@ -69,6 +69,30 @@ public:
 			if (name == spec.name) return comment == std::string::npos ? "" : line.substr(comment);
 		return line;
 	}
+	// Command names for retained compounds that actually dispatch timing controls.
+	// This is a filter view only: never use it to reconstruct saved text. Mirror
+	// the pinned console's root-space removal, semicolon dispatch and echo escape.
+	static std::vector<std::string> timingCompoundCommandNames(const std::string &line)
+	{
+		std::string commands = line.substr(0, line.find("//"));
+		if (!commands.empty() && commands[0] == ' ') commands.erase(0, 1);
+		if (commands.find(';') == std::string::npos || commands.find("echo") != std::string::npos) return {};
+		std::vector<std::string> names;
+		bool timing = false;
+		for (size_t start = 0; start <= commands.size();)
+		{
+			const size_t end = commands.find(';', start);
+			std::string statement = commands.substr(start, end == std::string::npos ? end : end - start);
+			if (!statement.empty() && statement[0] == ' ') statement.erase(0, 1);
+			const std::string name = statement.substr(0, statement.find(' '));
+			names.push_back(name);
+			for (const Spec &spec : specs()) if (name == spec.name) { timing = true; break; }
+			if (end == std::string::npos) break;
+			start = end + 1;
+		}
+		if (!timing) names.clear();
+		return names;
+	}
 	static bool safeText(const std::string &text)
 	{
 		for (unsigned char c : text) if (c < 32 || c == 127) return false;

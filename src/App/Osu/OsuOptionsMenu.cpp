@@ -4179,12 +4179,21 @@ void OsuOptionsMenu::save()
 				UString uLine = OsuTimingAudioSettings::retainOtherConfigStatements(in.readLine().toUtf8()).c_str();
 				const char *lineChar = uLine.toUtf8();
 				std::string line(lineChar);
+				// A retained timing compound must not be removed for an option name
+				// inside a cue filename. Match its dispatched commands, save its text.
+				const auto timingCommands = OsuTimingAudioSettings::timingCompoundCommandNames(line);
+				const auto legacyMatches = [&line, &timingCommands](ConVar *var) {
+					const std::string name = var->getName().toUtf8();
+					return timingCommands.empty() ? line.find(name) != std::string::npos
+						: std::find(timingCommands.begin(), timingCommands.end(), name) != timingCommands.end();
+				};
 
 				bool keepLine = true;
 				for (int i=0; i<m_elements.size(); i++)
 				{
-					if (m_elements[i].cvar != NULL && line.find(m_elements[i].cvar->getName().toUtf8()) != std::string::npos)
+					if (m_elements[i].cvar != NULL && legacyMatches(m_elements[i].cvar))
 					{
+						if (!timingCommands.empty()) { keepLine = false; break; }
 						// we don't want to remove custom convars which start with options entry convars (e.g. osu_rich_presence and osu_rich_presence_dynamic_windowtitle)
 						// so, keep lines which only have partial matches
 
@@ -4203,7 +4212,7 @@ void OsuOptionsMenu::save()
 
 				for (int i=0; i<manualConCommands.size(); i++)
 				{
-					if (line.find(manualConCommands[i]->getName().toUtf8()) != std::string::npos)
+					if (legacyMatches(manualConCommands[i]))
 					{
 						keepLine = false;
 						break;
@@ -4212,7 +4221,7 @@ void OsuOptionsMenu::save()
 
 				for (int i=0; i<manualConVars.size(); i++)
 				{
-					if (line.find(manualConVars[i]->getName().toUtf8()) != std::string::npos)
+					if (legacyMatches(manualConVars[i]))
 					{
 						keepLine = false;
 						break;
@@ -4221,7 +4230,7 @@ void OsuOptionsMenu::save()
 
 				for (int i=0; i<removeConCommands.size(); i++)
 				{
-					if (line.find(removeConCommands[i]->getName().toUtf8()) != std::string::npos)
+					if (legacyMatches(removeConCommands[i]))
 					{
 						keepLine = false;
 						break;

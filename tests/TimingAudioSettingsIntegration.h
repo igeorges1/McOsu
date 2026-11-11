@@ -1,7 +1,8 @@
 // Optional internal-event fixture extension. Use ONLY a throwaway runtime:
 // MCOSU_TIMING_AUDIO_SETTINGS_DRIVER=1 writes cfg/timing-audio-profiles.cfg and
 // deliberately tests malformed files/recovery/write failures there. It refuses
-// an existing profile file. Normal game builds do not include this driver.
+// an existing profile file and requires timing-audio-settings-test-scratch.txt
+// in the disposable runtime. Normal game builds do not include this driver.
 #ifndef TIMINGAUDIOSETTINGSINTEGRATION_H
 #define TIMINGAUDIOSETTINGSINTEGRATION_H
 
@@ -24,6 +25,10 @@ static bool timingAudioSettingsIntegration(Osu *osu, size_t index, bool ready)
 	if (!probed)
 	{
 		probed = true;
+		if (!env->fileExists("timing-audio-settings-test-scratch.txt"))
+		{
+			debugLog("TimingSettings: REFUSE missing explicit scratch marker\n"); engine->shutdown(); return true;
+		}
 		if (env->fileExists("cfg/timing-audio-profiles.cfg") || env->fileExists("cfg/timing-audio-profiles.cfg.bak"))
 		{
 			debugLog("TimingSettings: REFUSE existing profiles; use a throwaway runtime\n"); engine->shutdown(); return true;
@@ -72,15 +77,18 @@ static bool timingAudioSettingsIntegration(Osu *osu, size_t index, bool ready)
 		check(Settings::readProfiles(loaded).empty() && loaded == profiles, "write failure keeps previous profiles");
 		for (size_t i = 0; i < unrelated.size(); ++i)
 			check(unrelated[i] == convar->getConVarByName(untouched[i])->getString().toUtf8(), "unrelated setting preserved");
-		// Timing names in unrelated values/compound statements must survive the
-		// actual options writer, even with this feature disabled.
-		{
-			std::ofstream user("cfg/osu.cfg", std::ios::app);
-			user << "\nosu_folder_sub_songs osu_timing_audio_practice/\n"
-				<< "osu_folder_sub_songs Practice/; osu_timing_audio 0\n"
-				<< "osu_folder_sub_songs Commented/; osu_timing_audio 0 // preserve this note\n"
-				<< "  osu_end_delay_time 2000; osu_timing_audio 0\n";
-		}
+		// Each independent case starts with only its input. Checking only a final
+		// folder value could hide the loss of an earlier, overridden statement.
+		struct SaveCase { const char *line, *folder; int delay; };
+		const SaveCase saveCases[] = {
+			{"osu_folder_sub_songs osu_timing_audio_practice/", "osu_timing_audio_practice/", 750},
+			{"osu_folder_sub_songs Practice/; osu_timing_audio 0", "Practice/", 750},
+			{"osu_folder_sub_songs Commented/; osu_timing_audio 0 // preserve this note", "Commented/", 750},
+			{"  osu_end_delay_time 2000; osu_timing_audio 0", "Songs/", 2000},
+			{"osu_end_delay_time 2000; osu_timing_audio_early_sound monitor.wav", "Songs/", 2000},
+			{"osu_folder_sub_songs SkinCollision/; osu_timing_audio_early_sound osu_skin.wav", "SkinCollision/", 750},
+			{"osu_folder_sub_songs SortingCollision/; osu_timing_audio_early_sound osu_songbrowser_sortingtype.wav", "SortingCollision/", 750}
+		};
 		ConVar *endDelay = convar->getConVarByName("osu_end_delay_time");
 		ConVar *songsFolder = convar->getConVarByName("osu_folder_sub_songs");
 		const UString oldDelay = endDelay->getString(), oldSongsFolder = songsFolder->getString();
@@ -88,25 +96,49 @@ static bool timingAudioSettingsIntegration(Osu *osu, size_t index, bool ready)
 		{
 			auto expected = original; expected["osu_timing_audio"] = enabled ? "1" : "0";
 			check(Settings::apply(expected).empty(), "apply before config preservation save");
-			osu->getOptionsMenu()->save();
-			// Reload only these callback-free fields from the ACTUAL saved file.
-			// Replaying unrelated window/audio/skin callbacks would disturb the
-			// fixture. Preserve the statements and their original save order.
-			std::ifstream saved("cfg/osu.cfg");
-			std::ofstream probe("cfg/timing-settings-save-probe.cfg");
-			std::string line;
-			while (std::getline(saved, line))
-				if (line.find("osu_end_delay_time ") == 0 || line.find("  osu_end_delay_time ") == 0
-					|| line.find("osu_folder_sub_songs ") == 0 || line.find("osu_timing_audio ") == 0
-					|| line.find("osu_timing_audio_") == 0)
-					probe << line << "\n";
-			probe.close();
-			endDelay->setValue(750.0f); songsFolder->setValue("Songs/");
-			Console::execConfigFile("timing-settings-save-probe");
-			check(endDelay->getInt() == 2000 && songsFolder->getString() == UString("Commented/"),
-				"actual save/parser reload preserves unrelated compound values");
-			check(Settings::capture() == expected, "authoritative timing settings win after retained compounds");
-			endDelay->setValue(oldDelay); songsFolder->setValue(oldSongsFolder);
+			for (const SaveCase &test : saveCases)
+			{
+				{ std::ofstream input("cfg/osu.cfg"); input << test.line << "\n"; }
+				for (int round = 0; round < 2; ++round)
+				{
+					osu->getOptionsMenu()->save();
+					// Reload only these callback-free fields from the ACTUAL saved file.
+					// Replaying unrelated window/audio/skin callbacks would disturb the
+					// fixture. Preserve the statements and their original save order.
+					std::ifstream saved("cfg/osu.cfg");
+					std::ofstream probe("cfg/timing-settings-save-probe.cfg");
+					std::string line;
+					while (std::getline(saved, line))
+						if (line.find("osu_end_delay_time ") == 0 || line.find("  osu_end_delay_time ") == 0
+							|| line.find("osu_folder_sub_songs ") == 0 || line.find("osu_timing_audio ") == 0
+							|| line.find("osu_timing_audio_") == 0)
+							probe << line << "\n";
+					probe.close();
+					// Simulate a fresh process with every timing value different. Otherwise
+					// an omitted assignment could pass by retaining its pre-save value.
+					for (const auto &spec : Settings::specs())
+					{
+						std::string poison;
+						if (spec.type == Settings::BOOLEAN) poison = expected.at(spec.name) == "1" ? "0" : "1";
+						else if (spec.type == Settings::FILENAME)
+							poison = expected.at(spec.name) == "__reload_unset__.wav" ? "__other_unset__.wav" : "__reload_unset__.wav";
+						else
+						{
+							long double value = 0; Settings::number(expected.at(spec.name), value);
+							poison = std::to_string((double)(value == spec.min ? spec.max : spec.min));
+						}
+						convar->getConVarByName(spec.name)->setValue(UString(poison.c_str()));
+					}
+					const auto poisoned = Settings::capture();
+					for (const auto &spec : Settings::specs()) check(poisoned.at(spec.name) != expected.at(spec.name), "reload precondition changes every timing value");
+					endDelay->setValue(750.0f); songsFolder->setValue("Songs/");
+					Console::execConfigFile("timing-settings-save-probe");
+					check(endDelay->getInt() == test.delay && songsFolder->getString() == UString(test.folder),
+						"actual save/parser reload preserves unrelated compound values");
+					check(Settings::capture() == expected, "authoritative timing settings win after retained compounds");
+					endDelay->setValue(oldDelay); songsFolder->setValue(oldSongsFolder);
+				}
+			}
 		}
 		check(Settings::apply(original).empty(), "restore enabled settings after config preservation");
 		osu->getOptionsMenu()->save(); // same persistence route used by closing options
