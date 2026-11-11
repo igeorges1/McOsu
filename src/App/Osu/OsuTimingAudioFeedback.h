@@ -26,7 +26,7 @@ private:
 	Sound *m_early, *m_late;
 	UString m_earlyPath, m_latePath;
 	bool m_enabled, m_prepared, m_excludeActivity;
-	bool m_mutedAtLastHit = false;
+	OsuTimingAudioEvaluation::Output m_lastOutput = OsuTimingAudioEvaluation::NO_ISSUE;
 	double m_breakSeconds;
 };
 

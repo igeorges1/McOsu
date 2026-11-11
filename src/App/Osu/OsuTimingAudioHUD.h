@@ -17,7 +17,9 @@ namespace OsuTimingAudioHUD
 	struct Geometry
 	{
 		bool showReference = false;
+		bool showMean = false;
 		float reference = 0;
+		float mean = 0;
 		Span spread, silent;
 	};
 
@@ -47,6 +49,13 @@ namespace OsuTimingAudioHUD
 		geometry.showReference = std::abs(evaluation.referenceMapMS) <= windowMapMS;
 		if (geometry.showReference) geometry.reference = position(evaluation.referenceMapMS);
 		geometry.spread = projectRange(evaluation.spreadMapMS);
+		if (geometry.spread.visible)
+		{
+			// The mean belongs to the evaluated spread, even if its drawn span is clipped.
+			const double meanMapMS = evaluation.spreadMapMS.lower * 0.5 + evaluation.spreadMapMS.upper * 0.5;
+			geometry.showMean = std::abs(meanMapMS) <= windowMapMS;
+			if (geometry.showMean) geometry.mean = position(meanMapMS);
+		}
 		geometry.silent = projectRange(evaluation.silentMapMS);
 		return geometry;
 	}
