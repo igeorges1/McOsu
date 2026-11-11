@@ -17,6 +17,7 @@ public:
 	void reloadSounds();
 	void pause();
 	void onManualHit(long opportunityMS, long delta);
+	OsuTimingAudioEvaluation getLastEvaluation() const;
 
 private:
 	void loadCue(Sound *&sound, UString &attemptedPath, const UString &path);
@@ -25,6 +26,7 @@ private:
 	Sound *m_early, *m_late;
 	UString m_earlyPath, m_latePath;
 	bool m_enabled, m_prepared, m_excludeActivity;
+	bool m_mutedAtLastHit = false;
 	double m_breakSeconds;
 };
 

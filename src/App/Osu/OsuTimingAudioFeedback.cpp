@@ -98,6 +98,19 @@ void OsuTimingAudioFeedback::pause()
 	if (m_enabled) m_state.pause(osu_timing_audio_restart.getBool());
 }
 
+OsuTimingAudioEvaluation OsuTimingAudioFeedback::getLastEvaluation() const
+{
+	if (!osu_timing_audio.getBool())
+	{
+		OsuTimingAudioEvaluation evaluation;
+		evaluation.phase = OsuTimingAudioEvaluation::OFF;
+		return evaluation;
+	}
+	auto evaluation = m_state.getLastEvaluation();
+	evaluation.muted = evaluation.phase != OsuTimingAudioEvaluation::WAITING && m_mutedAtLastHit;
+	return evaluation;
+}
+
 void OsuTimingAudioFeedback::update()
 {
 	if (!osu_timing_audio.getBool())
@@ -166,6 +179,7 @@ void OsuTimingAudioFeedback::onManualHit(long opportunityMS, long delta)
 	const auto result = m_state.sampleMap(delta, window300, recent, opportunityMS,
 		reference.valid ? reference.preciseTargetMapMS : std::numeric_limits<long double>::quiet_NaN());
 	const float volume = osu_timing_audio_muted.getBool() ? 0.0f : timingAudioValue(osu_timing_audio_volume.getFloat(), 0.2, 0.0, 1.0);
+	m_mutedAtLastHit = volume <= 0.0f;
 	bool played = false;
 	if (result.cue != OsuTimingAudioState::SILENT && volume > 0.0f)
 	{

@@ -21,6 +21,7 @@ class OsuVR;
 class OsuSkin;
 class OsuHitObject;
 class OsuTimingAudioFeedback;
+struct OsuTimingAudioEvaluation;
 
 class OsuDatabaseBeatmap;
 
@@ -84,6 +85,7 @@ public:
 
 	// music/sound
 	void reloadTimingAudioSounds();
+	OsuTimingAudioEvaluation getTimingAudioEvaluation() const;
 	void unloadMusic() {unloadMusicInt();}
 	void setVolume(float volume);
 	void setSpeed(float speed);

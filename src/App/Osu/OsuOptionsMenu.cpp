@@ -1107,6 +1107,8 @@ OsuOptionsMenu::OsuOptionsMenu(Osu *osu) : OsuScreenBackable(osu)
 	addCheckbox("Draw Key Overlay", convar->getConVarByName("osu_draw_inputoverlay"));
 	addCheckbox("Draw Scrubbing Timeline", convar->getConVarByName("osu_draw_scrubbing_timeline"));
 	addCheckbox("Draw Miss Window on HitErrorBar", convar->getConVarByName("osu_hud_hiterrorbar_showmisswindow"));
+	addCheckbox("Timing Audio on Hit Error Bar", "Shows the latest eligible manual hit's timing audio evaluation.\nMarker: audio reference. Bracket: learned mean +/- one population SD.\nStrip: silent cue band. Muted and gated hits still teach the estimator.",
+		convar->getConVarByName("osu_hud_hiterrorbar_timing_audio"));
 	addSpacer();
 	addCheckbox("Draw Stats: pp", "Realtime pp counter.\nDynamically calculates earned pp by incrementally updating the star rating.", convar->getConVarByName("osu_draw_statistics_pp"));
 	addCheckbox("Draw Stats: pp (SS)", "Max possible total pp for active mods (full combo + perfect acc).", convar->getConVarByName("osu_draw_statistics_perfectpp"));

@@ -14,6 +14,7 @@ class Osu;
 class OsuVR;
 class OsuScore;
 class OsuBeatmapStandard;
+struct OsuTimingAudioEvaluation;
 
 class McFont;
 class ConVar;
@@ -164,8 +165,8 @@ private:
 
 	void drawWarningArrows(Graphics *g, float hitcircleDiameter = 0.0f);
 	void drawContinue(Graphics *g, Vector2 cursor, float hitcircleDiameter = 0.0f);
-	void drawHitErrorBar(Graphics *g, float hitWindow300, float hitWindow100, float hitWindow50, float hitWindowMiss, int ur);
-	void drawHitErrorBarInt(Graphics *g, float hitWindow300, float hitWindow100, float hitWindow50, float hitWindowMiss);
+	void drawHitErrorBar(Graphics *g, float hitWindow300, float hitWindow100, float hitWindow50, float hitWindowMiss, int ur, const OsuBeatmapStandard *beatmap = NULL);
+	void drawHitErrorBarInt(Graphics *g, float hitWindow300, float hitWindow100, float hitWindow50, float hitWindowMiss, const OsuTimingAudioEvaluation &evaluation);
 	void drawHitErrorBarInt2(Graphics *g, Vector2 center, int ur);
 	void drawProgressBar(Graphics *g, float percent, bool waiting);
 	void drawProgressBarVR(Graphics *g, Matrix4 &mvp, OsuVR *vr, float percent, bool waiting);
