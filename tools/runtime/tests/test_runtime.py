@@ -63,7 +63,10 @@ int main(int argc, char **argv) {
             (payload / ("materials/old.txt" if index == 1 else "materials/new.txt")).write_bytes(bytes([index]))
             package = self.base / ("package" + str(index))
             r.make_package(payload, {"source": str(index) * 40, "dirty": False, "engine": r.ENGINE_PIN,
-                                    "toolchain": {"test_only": True}}, package)
+                                    "test_fixture": True,
+                                    "toolchain": {"version": "8.1.0", "target": "i686-w64-mingw32",
+                                                  "threads": "win32", "exceptions": "dwarf2",
+                                                  "gxx_sha256": "0" * 64, "tree_sha256": "0" * 64}}, package)
             self.packages.append(package)
         r.initialize(self.root)
         r.operate("update", self.root, self.packages[0])
@@ -137,6 +140,8 @@ int main(int argc, char **argv) {
                  lambda m: m["files"].update({"materials/NUL.txt": {"size": 0, "sha256": "0" * 64}}),
                  lambda m: m["build"].update({"dirty": True}),
                  lambda m: m["build"].update({"engine": "0" * 40}),
+                 lambda m: m["build"].update({"toolchain": {}}),
+                 lambda m: m["build"].update({"source": None}),
                  lambda m: m.update({"format": 99})]
         for change in cases:
             with self.subTest(change=change):
@@ -229,6 +234,38 @@ r.operate("update", Path(sys.argv[2]), Path(sys.argv[3]))
         self.assertFalse((self.root / "materials/new.txt").exists())
         self.preserved()
         r.operate("update", self.root, self.packages[1])
+        self.preserved()
+
+    def test_interruption_after_pointer_switch_retains_old_rollback_history(self):
+        r.operate("update", self.root, self.packages[1])
+        before = r.operate("inspect", self.root)
+        code = '''import os, sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+import runtime as r
+original = os.replace
+def interrupt(source, target):
+    original(source, target)
+    if Path(target).name == "state.json": os._exit(74)
+r.os.replace = interrupt
+r.operate("update", Path(sys.argv[2]), Path(sys.argv[3]))
+'''
+        result = subprocess.run([sys.executable, "-c", code, str(Path(r.__file__).parent),
+                                 str(self.root), str(self.packages[2])])
+        self.assertEqual(result.returncode, 74)
+        self.assertTrue(r.operate("inspect", self.root)["recovery_required"])
+        # Recovery itself can be interrupted after replacing an asset and safely retried.
+        code = code.replace('if Path(target).name == "state.json": os._exit(74)',
+                            'if Path(target).name == "common.txt": os._exit(75)')
+        code = code.replace('r.operate("update", Path(sys.argv[2]), Path(sys.argv[3]))',
+                            'r.operate("recover", Path(sys.argv[2]))')
+        result = subprocess.run([sys.executable, "-c", code, str(Path(r.__file__).parent), str(self.root)])
+        self.assertEqual(result.returncode, 75)
+        r.operate("recover", self.root)
+        self.assertEqual(before, r.operate("inspect", self.root))
+        self.assertEqual((self.root / "materials/common.txt").read_bytes(), b"asset\x02")
+        r.operate("rollback", self.root, acknowledge_state_risk=True)
+        self.assertEqual((self.root / "materials/common.txt").read_bytes(), b"asset\x01")
         self.preserved()
 
     def await_file(self, path):

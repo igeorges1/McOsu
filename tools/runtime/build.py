@@ -25,7 +25,7 @@ FLAGS = ["-O2", "-Wall", "-c", "-fmessage-length=0", "-Wno-sign-compare",
 SYSTEM_DLLS = {"kernel32.dll", "user32.dll", "gdi32.dll", "msvcrt.dll", "advapi32.dll",
                "shell32.dll", "ole32.dll", "oleaut32.dll", "comdlg32.dll", "comctl32.dll",
                "dwmapi.dll", "psapi.dll", "ws2_32.dll", "winmm.dll", "opengl32.dll",
-               "glu32.dll", "version.dll", "imm32.dll", "ntdll.dll", "shlwapi.dll"}
+               "glu32.dll", "version.dll", "imm32.dll", "ntdll.dll", "shlwapi.dll", "msacm32.dll"}
 
 
 def run(args, **kwargs):

@@ -48,6 +48,10 @@ def identity(manifest):
     return hashlib.sha256(canonical({k: v for k, v in manifest.items() if k != "id"})).hexdigest()
 
 
+def hex_string(value, length):
+    return isinstance(value, str) and re.fullmatch("[0-9a-f]{" + str(length) + "}", value)
+
+
 def read_json(path):
     def unique(pairs):
         result = {}
@@ -107,14 +111,20 @@ def validate(package):
     inventory = files(package)
     require("manifest.json" in inventory, "Missing package manifest")
     m = read_json(package / "manifest.json")
-    require(set(m) == {"format", "id", "build", "files"} and m["format"] == 1,
+    require(isinstance(m, dict) and set(m) == {"format", "id", "build", "files"}
+            and type(m["format"]) is int and m["format"] == 1,
             "Unknown package format")
     require(m["id"] == identity(m), "Package identity mismatch")
     b = m["build"]
     require(isinstance(b, dict) and b.get("engine") == ENGINE_PIN
-            and re.fullmatch(r"[0-9a-f]{40}", b.get("source", ""))
+            and hex_string(b.get("source"), 40)
             and b.get("dirty") is False and isinstance(b.get("toolchain"), dict),
             "Missing/invalid source, clean status, engine pin or toolchain identity")
+    tc = b["toolchain"]
+    require(tc.get("version") == "8.1.0" and tc.get("target") == "i686-w64-mingw32"
+            and tc.get("threads") == "win32" and tc.get("exceptions") == "dwarf2"
+            and hex_string(tc.get("gxx_sha256"), 64) and hex_string(tc.get("tree_sha256"), 64),
+            "Invalid toolchain fingerprint")
     require(isinstance(m["files"], dict) and "McOsu.exe" in m["files"], "Missing executable")
     seen = set()
     for name, record in m["files"].items():
@@ -123,7 +133,7 @@ def validate(package):
         seen.add(name.lower())
         require(isinstance(record, dict) and set(record) == {"sha256", "size"}
                 and type(record["size"]) is int and record["size"] >= 0
-                and re.fullmatch(r"[0-9a-f]{64}", record["sha256"]), "Invalid file record")
+                and hex_string(record["sha256"], 64), "Invalid file record")
         p = package / "payload" / name
         require("payload/" + name in inventory, "Missing payload: " + name)
         require(p.stat().st_size == record["size"] and digest(p) == record["sha256"],
@@ -297,6 +307,7 @@ def transact(root, state, package):
     verify_live(root, before)
     check_plan(root, before, after)
     if after["id"] == state["current"]:
+        collect(root, state)  # Also finish any interrupted post-commit garbage collection.
         return state
     destination = control / "bundles" / after["id"]
     # Stage fully before publishing the journal. Leftover staging is safe to discard.
