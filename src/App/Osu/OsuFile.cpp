@@ -213,7 +213,7 @@ uint64_t OsuFile::readULEB128()
 
 float OsuFile::readFloat()
 {
-	if (!m_bReady || (m_readPointer + 4) >= (m_buffer + m_iFileSize)) return 0;
+	if (!m_bReady || (m_buffer + m_iFileSize) - m_readPointer < 4) return 0;
 
 	const float value = (float)*(float*)m_readPointer;
 	m_readPointer += 4;
