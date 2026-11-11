@@ -36,7 +36,10 @@ python tools/runtime/build.py package --build tools/runtime/out/build-001 --out 
 python tools/runtime/runtime.py validate --package tools/runtime/out/package-001
 ```
 
-Use fresh output paths; existing builds/evidence are never erased. Builds are
+Use fresh output paths. Build output inside the source checkout must be
+Git-ignored, such as `tools/runtime/out/`; otherwise choose a path outside the
+checkout. The builder refuses an unignored in-tree output before compiling.
+Existing builds/evidence are never erased. Builds are
 full builds (four compiler workers by default, `--jobs 1..32`). Per-unit compiler
 arguments/logs, private engine/game snapshots, link log, PE imports and
 `build.json` remain in the output. Packaging refuses a changed build payload.
@@ -52,7 +55,11 @@ Cross-machine bit-for-bit compiler reproducibility is not claimed.
 ## Initialize once, reuse for later builds
 
 Initialization accepts a nonexistent or **empty** destination only. It never
-adopts an existing installation or a source checkout.
+adopts an existing installation or a source checkout. A competing initializer
+cannot claim the same destination or overwrite a runtime initialized while its
+import plan was being prepared. If an import fails after copying some files,
+inspect the partial destination and use a fresh empty path for a retry; the
+tool leaves copied state intact.
 
 ```powershell
 python tools/runtime/runtime.py init --runtime C:/Games/McOsu-managed
@@ -99,8 +106,10 @@ Updates validate the entire package before writes; refuse unmanaged destinations
 active images, modified managed files, unowned-file conflicts, links/junctions,
 and concurrent operations; stage and revalidate a private package copy; journal
 the pre-update pointers; replace/delete only owned leaves; then switch metadata
-atomically. No user state is moved into a rollback bundle. A caught write error
-restores the earlier bundle automatically. An abrupt interruption blocks launch
+atomically. No user state is moved into a rollback bundle. If a payload or state
+write fails after journaling, the tool attempts to restore the pre-update bundle,
+leaving already correct files in place. The error reports whether restoration
+finished; use `inspect` to check for pending recovery if it did not. An abrupt interruption blocks launch
 and further updates until explicit recovery:
 
 ```powershell

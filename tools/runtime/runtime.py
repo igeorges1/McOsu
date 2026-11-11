@@ -1,6 +1,6 @@
 """Managed flat Windows runtimes. Standard library only; no game/source changes."""
 import argparse
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 import ctypes
 from ctypes import wintypes
 import hashlib
@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import stat
 import subprocess
 import sys
 
@@ -266,10 +267,30 @@ def install_files(root, target, remove):
             p.unlink()
     for name in sorted(manifest["files"]):
         p = no_links(root / name)
+        # A blocked replacement can leave the old bytes intact. Recovery must
+        # not attempt the same blocked write when those bytes are already right.
+        if p.is_file() and digest(p) == manifest["files"][name]["sha256"]:
+            continue
         p.parent.mkdir(parents=True, exist_ok=True)
         temporary = root / CONTROL / "replace.tmp"
         shutil.copyfile(target / "payload" / name, temporary)
         os.replace(temporary, p)
+
+
+def discard_private_tree(path):
+    # Earlier staging copies may carry Windows read-only attributes. Clear
+    # those only on private files already selected for deletion, never live
+    # files or the source package. Other deletion failures still propagate.
+    def retry_readonly(operation, name, error):
+        if operation != os.unlink or not isinstance(error, PermissionError):
+            raise error
+        leaf = no_links(Path(name))
+        if not leaf.stat().st_file_attributes & stat.FILE_ATTRIBUTE_READONLY:
+            raise error
+        leaf.chmod(stat.S_IREAD | stat.S_IWRITE)
+        operation(leaf)
+
+    shutil.rmtree(path, onexc=retry_readonly)
 
 
 def collect(root, state):
@@ -277,7 +298,7 @@ def collect(root, state):
     for p in (root / CONTROL / "bundles").iterdir():
         require(p.is_dir() and re.fullmatch(r"[0-9a-f]{64}", p.name), "Unexpected bundle entry")
         if p.name not in keep:
-            shutil.rmtree(p)
+            discard_private_tree(p)
 
 
 def recover_locked(root):
@@ -294,6 +315,7 @@ def recover_locked(root):
     after = validate(bundle(root, tx["after"]))
     target = bundle(root, before["current"]) if before["current"] else None
     install_files(root, target, after["files"])
+    (root / CONTROL / "replace.tmp").unlink(missing_ok=True)
     write_json(root / CONTROL / "state.json", before)
     journal.unlink()
     collect(root, before)
@@ -313,12 +335,14 @@ def transact(root, state, package):
     # Stage fully before publishing the journal. Leftover staging is safe to discard.
     stage = control / "stage"
     if stage.exists():
-        shutil.rmtree(stage)
-    shutil.copytree(package, stage)
+        discard_private_tree(stage)
+    # Bundle ownership is defined by bytes, not source file attributes. Keep
+    # private copies removable even when the supplied package is read-only.
+    shutil.copytree(package, stage, copy_function=shutil.copyfile)
     require(validate(stage) == after, "Package changed during staging")
     if destination.exists():
         require(validate(destination) == after, "Stored bundle differs")
-        shutil.rmtree(stage)
+        discard_private_tree(stage)
     else:
         os.replace(stage, destination)
     write_json(control / "transaction.json", {"before": state, "after": after["id"]})
@@ -327,9 +351,13 @@ def transact(root, state, package):
         verify_live(root, after)
         new = {"kind": KIND, "current": after["id"], "previous": state["current"]}
         write_json(control / "state.json", new)
-    except Exception:
-        recover_locked(root)
-        raise
+    except Exception as error:
+        try:
+            recover_locked(root)
+        except Exception as recovery_error:
+            raise Refusal(f"Update failed: {error}; automatic recovery did not finish: "
+                          f"{recovery_error}. Use inspect to check whether recover is needed.") from recovery_error
+        raise Refusal(f"Update failed; pre-update bundle restored: {error}") from error
     # Commit point: recovery before this removal always restores the pre-update bundle.
     (control / "transaction.json").unlink()
     collect(root, new)
@@ -355,14 +383,28 @@ def initialize(root, import_from=None, dry_run=False):
     if dry_run:
         return plan
     root.mkdir(parents=True, exist_ok=True)
-    for name, source in imports.items():
-        target = root / name
-        target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(source, target)
-    for name in ("cfg", "screenshots", CONTROL + "/bundles"):
-        (root / name).mkdir(parents=True, exist_ok=True)
-    (root / CONTROL / "lock").write_bytes(b"0")
-    write_json(root / CONTROL / "state.json", {"kind": KIND, "current": None, "previous": None})
+    # The source scan can take time. Recheck, then claim the control directory
+    # exclusively before any copy; a competing initializer must lose the claim.
+    require(not any(root.iterdir()), "Initialization requires an empty destination")
+    control = root / CONTROL
+    try:
+        control.mkdir()
+    except FileExistsError as error:
+        raise Refusal("Initialization already started in this destination") from error
+    try:
+        for name, source in imports.items():
+            target = root / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source, target)
+        for name in ("cfg", "screenshots", CONTROL + "/bundles"):
+            (root / name).mkdir(parents=True, exist_ok=True)
+        (control / "lock").write_bytes(b"0")
+        write_json(control / "state.json", {"kind": KIND, "current": None, "previous": None})
+    except Exception:
+        # Relinquish an empty claim; never delete partly copied user state.
+        with suppress(OSError):
+            control.rmdir()
+        raise
     return plan
 
 

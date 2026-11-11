@@ -2,6 +2,8 @@
 import json
 import os
 from pathlib import Path
+import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -86,6 +88,11 @@ int main(int argc, char **argv) {
 
     def preserved(self):
         self.assertEqual(self.sentinels, {n: (self.root / n).read_bytes() for n in self.sentinels})
+
+    def cli(self, action, *args, root=None):
+        return subprocess.run([sys.executable, str(r.__file__), action, "--runtime",
+                               str(root or self.root), *map(str, args)],
+                              capture_output=True, text=True)
 
     def refused_unchanged(self, callback, text=None):
         before = self.snapshot()
@@ -182,6 +189,92 @@ int main(int argc, char **argv) {
         (target / "cfg/osu.cfg").write_bytes(b"changed copy")
         self.preserved()
 
+    def test_competing_init_cannot_overwrite_completed_runtime(self):
+        target = self.base / "contested runtime"
+        import_cfg = self.base / "import source" / "cfg"
+        import_cfg.mkdir(parents=True)
+        (import_cfg / "osu.cfg").write_bytes(b"losing import")
+        scan = r.files
+        winner = {}
+
+        def interleave(path):
+            if path == import_cfg:
+                initialized = self.cli("init", root=target)
+                self.assertEqual(initialized.returncode, 0, initialized.stderr)
+                deployed = self.cli("update", "--package", self.packages[0], root=target)
+                self.assertEqual(deployed.returncode, 0, deployed.stderr)
+                (target / "cfg/osu.cfg").write_bytes(b"winning runtime state")
+                winner.update(self.snapshot(target))
+            return scan(path)
+
+        # Make a second real CLI initialization finish during the first import scan.
+        with patch.object(r, "files", interleave):
+            with self.assertRaisesRegex(r.Refusal, "empty|initializ"):
+                r.initialize(target, import_cfg.parent)
+        self.assertTrue(winner)
+        self.assertEqual(winner, self.snapshot(target))
+
+    def test_failed_first_import_can_retry_empty_destination(self):
+        source = self.base / "state source"
+        source.mkdir()
+        (source / "scores.db").write_bytes(b"original scores")
+        target = self.base / "import retry"
+        with patch.object(r.shutil, "copyfile", side_effect=PermissionError("source open failed")):
+            with self.assertRaises(PermissionError):
+                r.initialize(target, source)
+        self.assertEqual(list(target.iterdir()), [])
+        result = self.cli("init", "--import-from", source, root=target)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((target / "scores.db").read_bytes(), b"original scores")
+
+    def test_readonly_package_assets_do_not_block_rollback_or_collection(self):
+        asset = self.packages[1] / "payload/materials/common.txt"
+        asset.chmod(stat.S_IREAD)
+        self.addCleanup(asset.chmod, stat.S_IREAD | stat.S_IWRITE)
+        for action, args in (
+            ("update", ("--package", self.packages[1])),
+            ("rollback", ("--acknowledge-state-risk",)),
+            ("rollback", ("--acknowledge-state-risk",)),
+            ("update", ("--package", self.packages[2])),
+            ("update", ("--package", self.packages[0])),
+        ):
+            result = self.cli(action, *args)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.preserved()
+        self.assertFalse(asset.stat().st_mode & stat.S_IWRITE)
+        self.assertEqual(len(list((self.root / r.CONTROL / "bundles").iterdir())), 2)
+
+    def test_readonly_legacy_stage_and_bundle_can_be_retired(self):
+        control = self.root / r.CONTROL
+        old_bundle = control / "bundles" / r.validate(self.packages[0])["id"]
+        asset = self.packages[0] / "payload/materials/common.txt"
+        asset.chmod(stat.S_IREAD)
+        self.addCleanup(asset.chmod, stat.S_IREAD | stat.S_IWRITE)
+        # Older copies preserved the package's file attributes inside both trees.
+        shutil.copymode(asset, old_bundle / "payload/materials/common.txt")
+        shutil.copytree(self.packages[0], control / "stage")
+        for package in self.packages[1:]:
+            result = self.cli("update", "--package", package)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.preserved()
+        self.assertFalse(old_bundle.exists())
+        self.assertFalse((control / "stage").exists())
+        self.assertFalse(asset.stat().st_mode & stat.S_IWRITE)
+        self.assertEqual(len(list((control / "bundles").iterdir())), 2)
+
+    def test_failed_replacement_recovers_without_rewriting_unchanged_asset(self):
+        asset = self.root / "materials/common.txt"
+        asset.chmod(stat.S_IREAD)
+        self.addCleanup(asset.chmod, stat.S_IREAD | stat.S_IWRITE)
+        before = self.snapshot()
+        result = self.cli("update", "--package", self.packages[1])
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertFalse((self.root / r.CONTROL / "transaction.json").exists(), result.stderr)
+        self.assertIn("pre-update bundle restored", result.stderr)
+        self.assertEqual(before, self.snapshot())
+        self.assertFalse(asset.stat().st_mode & stat.S_IWRITE)
+        self.preserved()
+
     def test_changed_owned_and_conflicting_unowned_files_are_refused(self):
         (self.root / "materials/new.txt").write_bytes(b"user file")
         self.refused_unchanged(lambda: r.operate("update", self.root, self.packages[1]), "Unowned")
@@ -201,7 +294,7 @@ int main(int argc, char **argv) {
             return replace(source, target)
 
         with patch.object(r.os, "replace", failure):
-            with self.assertRaises(OSError):
+            with self.assertRaisesRegex(r.Refusal, "pre-update bundle restored"):
                 r.operate("update", self.root, self.packages[1])
         self.assertTrue(failed)
         self.assertEqual(before, self.snapshot())
@@ -323,7 +416,6 @@ r.operate("update", Path(sys.argv[2]), Path(sys.argv[3]))
     def test_packager_requires_completed_unchanged_build(self):
         built = self.base / "built"
         built.mkdir()
-        import shutil
         shutil.copytree(self.packages[0] / "payload", built / "payload")
         record = {"complete": True, "identity": r.validate(self.packages[0])["build"],
                   "payload_hashes": {n: r.digest(p) for n, p in r.files(built / "payload").items()}}
@@ -335,6 +427,28 @@ r.operate("update", Path(sys.argv[2]), Path(sys.argv[3]))
         with self.assertRaises(r.Refusal):
             builder.package_build(built, self.base / "must-not-exist")
         self.assertFalse((self.base / "must-not-exist").exists())
+
+    def test_build_refuses_unignored_in_tree_output_before_dependency_checks(self):
+        source = self.base / "clean source"
+        subprocess.run(["git", "init", "-q", str(source)], check=True, capture_output=True)
+        # This is a disposable Git fixture, not a new project worktree.
+        git = ["git", "-C", str(source), "-c", "user.name=Runtime Fixture",
+               "-c", "user.email=runtime-fixture@example.invalid"]
+        (source / ".gitignore").write_text("/ignored/\n", encoding="utf-8")
+        subprocess.run([*git, "add", ".gitignore"], check=True, capture_output=True)
+        subprocess.run([*git, "commit", "-qm", "fixture"], check=True, capture_output=True)
+        command = [sys.executable, str(builder.__file__), "build", "--source", str(source),
+                   "--engine", str(self.base / "missing engine"), "--toolchain", str(self.base / "cc"),
+                   "--assets", str(self.base / "assets"), "--out"]
+        refused = subprocess.run([*command, str(source / "unignored")], capture_output=True, text=True)
+        self.assertEqual(refused.returncode, 1)
+        self.assertIn("Git-ignored", refused.stderr)
+        self.assertFalse((source / "unignored").exists())
+        accepted = subprocess.run([*command, str(source / "ignored/fresh")], capture_output=True, text=True)
+        # An ignored output passes the gate and reaches the deliberately absent engine.
+        self.assertEqual(accepted.returncode, 1)
+        self.assertNotIn("Git-ignored", accepted.stderr)
+        self.assertIn("missing engine", accepted.stderr)
 
 
 if __name__ == "__main__":

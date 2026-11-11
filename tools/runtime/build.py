@@ -90,6 +90,11 @@ def build(source, engine, toolchain, assets, out, jobs):
         require(not input_path.is_relative_to(out), "Output contains an input")
     require(not out.is_relative_to(engine) and not out.is_relative_to(toolchain)
             and not out.is_relative_to(assets), "Output overlaps a dependency input")
+    if out.is_relative_to(source):
+        relative_output = out.relative_to(source).as_posix() + "/"
+        ignored = subprocess.run(git(source, "check-ignore", "-q", "--", relative_output), check=False)
+        require(ignored.returncode == 0,
+                "Build output inside the source checkout must be Git-ignored; use tools/runtime/out/ or an external path")
     require(not run(git(source, "status", "--porcelain", "--untracked-files=all")),
             "Source must be clean; commit changes before building")
     head = run(git(source, "rev-parse", "HEAD"))
