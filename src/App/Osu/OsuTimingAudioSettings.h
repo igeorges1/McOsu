@@ -69,14 +69,14 @@ public:
 			if (name == spec.name) return comment == std::string::npos ? "" : line.substr(comment);
 		return line;
 	}
-	// Command names for retained compounds that actually dispatch timing controls.
+	// Dispatched command names for retained compounds containing timing controls.
 	// This is a filter view only: never use it to reconstruct saved text. Mirror
 	// the pinned console's root-space removal, semicolon dispatch and echo escape.
 	static std::vector<std::string> timingCompoundCommandNames(const std::string &line)
 	{
 		std::string commands = line.substr(0, line.find("//"));
 		if (!commands.empty() && commands[0] == ' ') commands.erase(0, 1);
-		if (commands.find(';') == std::string::npos || commands.find("echo") != std::string::npos) return {};
+		if (commands.find(';') == std::string::npos) return {};
 		std::vector<std::string> names;
 		bool timing = false;
 		for (size_t start = 0; start <= commands.size();)
@@ -91,6 +91,10 @@ public:
 			start = end + 1;
 		}
 		if (!timing) names.clear();
+		// An echo substring anywhere suppresses recursive dispatch. Only the
+		// root command executes, even when later text looks like timing controls.
+		else if (commands.find("echo") != std::string::npos)
+			names = {commands.substr(0, commands.find(' '))};
 		return names;
 	}
 	static bool safeText(const std::string &text)

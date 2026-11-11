@@ -87,7 +87,8 @@ static bool timingAudioSettingsIntegration(Osu *osu, size_t index, bool ready)
 			{"  osu_end_delay_time 2000; osu_timing_audio 0", "Songs/", 2000},
 			{"osu_end_delay_time 2000; osu_timing_audio_early_sound monitor.wav", "Songs/", 2000},
 			{"osu_folder_sub_songs SkinCollision/; osu_timing_audio_early_sound osu_skin.wav", "SkinCollision/", 750},
-			{"osu_folder_sub_songs SortingCollision/; osu_timing_audio_early_sound osu_songbrowser_sortingtype.wav", "SortingCollision/", 750}
+			{"osu_folder_sub_songs SortingCollision/; osu_timing_audio_early_sound osu_songbrowser_sortingtype.wav", "SortingCollision/", 750},
+			{"osu_end_delay_time 2000; osu_timing_audio_early_sound echo monitor.wav", "Songs/", 2000}
 		};
 		ConVar *endDelay = convar->getConVarByName("osu_end_delay_time");
 		ConVar *songsFolder = convar->getConVarByName("osu_folder_sub_songs");
