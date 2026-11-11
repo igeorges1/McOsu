@@ -2351,6 +2351,11 @@ void OsuBeatmap::reloadTimingAudioSounds()
 	m_timingAudioFeedback->reloadSounds();
 }
 
+OsuTimingAudioEvaluation OsuBeatmap::getTimingAudioEvaluation() const
+{
+	return m_timingAudioFeedback->getLastEvaluation();
+}
+
 void OsuBeatmap::playTimingFeedback(long opportunityMS, long delta, OsuScore::HIT result)
 {
 	if (result == OsuScore::HIT::HIT_300 || result == OsuScore::HIT::HIT_100 || result == OsuScore::HIT::HIT_50)
