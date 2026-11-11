@@ -2292,7 +2292,8 @@ static UString timingAudioLabel(const OsuTimingAudioEvaluation &evaluation, floa
 	else if (evaluation.phase == Evaluation::GATED) label.append(" | 300 gate");
 	else if (evaluation.fixedFallback) label.append(" | Fixed fallback");
 	else if (!std::isfinite(evaluation.spreadMapMS.lower)) label.append(" | SD unavailable");
-	if (evaluation.muted) label.append(" | Muted");
+	if (evaluation.output == Evaluation::MUTED) label.append(" | Muted");
+	else if (evaluation.output == Evaluation::CUE_UNAVAILABLE) label.append(" | Cue unavailable");
 	if (std::abs(evaluation.referenceMapMS) > windowMapMS) label.append(" | Ref off bar");
 	return label;
 }
@@ -2439,6 +2440,7 @@ static void drawTimingAudioGeometry(Graphics *g, const OsuTimingAudioHUD::Geomet
 		stroke(left, y, std::max(1, right - left), 1, 0xffffffff);
 		if (geometry.spread.showLowerCap) stroke(left, y, 1, 4, 0xffffffff);
 		if (geometry.spread.showUpperCap && right != left) stroke(right, y, 1, 4, 0xffffffff);
+		if (geometry.showMean) stroke((int)std::round(geometry.mean), y - 3, 1, 4, 0xffffffff);
 	}
 }
 

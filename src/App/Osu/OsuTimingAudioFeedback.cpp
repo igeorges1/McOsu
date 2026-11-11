@@ -107,7 +107,7 @@ OsuTimingAudioEvaluation OsuTimingAudioFeedback::getLastEvaluation() const
 		return evaluation;
 	}
 	auto evaluation = m_state.getLastEvaluation();
-	evaluation.muted = evaluation.phase != OsuTimingAudioEvaluation::WAITING && m_mutedAtLastHit;
+	if (evaluation.phase != OsuTimingAudioEvaluation::WAITING) evaluation.output = m_lastOutput;
 	return evaluation;
 }
 
@@ -179,7 +179,6 @@ void OsuTimingAudioFeedback::onManualHit(long opportunityMS, long delta)
 	const auto result = m_state.sampleMap(delta, window300, recent, opportunityMS,
 		reference.valid ? reference.preciseTargetMapMS : std::numeric_limits<long double>::quiet_NaN());
 	const float volume = osu_timing_audio_muted.getBool() ? 0.0f : timingAudioValue(osu_timing_audio_volume.getFloat(), 0.2, 0.0, 1.0);
-	m_mutedAtLastHit = volume <= 0.0f;
 	bool played = false;
 	if (result.cue != OsuTimingAudioState::SILENT && volume > 0.0f)
 	{
@@ -190,6 +189,13 @@ void OsuTimingAudioFeedback::onManualHit(long opportunityMS, long delta)
 			played = engine->getSound()->play(sound);
 		}
 	}
+	// Report the last hit's output status without changing the playback request.
+	if (volume <= 0.0f || engine->getSound()->getVolume() <= 0.0f)
+		m_lastOutput = OsuTimingAudioEvaluation::MUTED;
+	else if (result.cue != OsuTimingAudioState::SILENT && !played)
+		m_lastOutput = OsuTimingAudioEvaluation::CUE_UNAVAILABLE;
+	else
+		m_lastOutput = OsuTimingAudioEvaluation::NO_ISSUE;
 	if (osu_timing_audio_trace.getBool())
 		debugLog("TimingAudio: map=%ld error=%.3f baseline=%.3f deviation=%.3f preceding=%llu cue=%i played=%i gain=%.3f target_units=%.3f target_ms=%.3f target_valid=%i halfwidth=%.6f variance=%.6f fallback=%i\n", m_beatmap->getCurMusicPosWithOffsets(), (double)delta / speed, result.baselineMS, result.deviationMS, result.precedingSamples, (int)result.cue, (int)played, volume, (double)target, reference.targetMS, (int)reference.valid, result.halfWidthMS, result.varianceMS2, (int)result.fixedFallback);
 }
