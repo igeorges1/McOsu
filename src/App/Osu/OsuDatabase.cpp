@@ -49,7 +49,7 @@ ConVar osu_folder_sub_songs("osu_folder_sub_songs", "Songs/", FCVAR_NONE);
 ConVar osu_folder_sub_skins("osu_folder_sub_skins", "Skins/", FCVAR_NONE);
 
 ConVar osu_database_enabled("osu_database_enabled", true, FCVAR_NONE);
-ConVar osu_database_version("osu_database_version", 20191114, FCVAR_NONE, "maximum supported osu!.db version, above this will use fallback loader");
+ConVar osu_database_version("osu_database_version", 20260924, FCVAR_NONE, "maximum supported osu!.db version, above this will use fallback loader");
 ConVar osu_database_ignore_version_warnings("osu_database_ignore_version_warnings", false, FCVAR_NONE);
 ConVar osu_database_ignore_version("osu_database_ignore_version", false, FCVAR_NONE, "ignore upper version limit and force load the db file (may crash)");
 ConVar osu_database_stars_cache_enabled("osu_database_stars_cache_enabled", false, FCVAR_NONE);
