@@ -68,6 +68,14 @@ void OsuTimingAudioFeedback::reset()
 	m_latePath = "";
 }
 
+void OsuTimingAudioFeedback::reloadSounds()
+{
+	// Backend restarts invalidate sample handles, not learned timing or file choices.
+	// Reload the actual owned files, including a retained fallback after a failed change.
+	for (Sound *sound : {m_early, m_late})
+		if (sound != NULL) sound->reload();
+}
+
 void OsuTimingAudioFeedback::loadCue(Sound *&sound, UString &attemptedPath, const UString &path)
 {
 	if (path == attemptedPath) return;

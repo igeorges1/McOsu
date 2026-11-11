@@ -4,6 +4,8 @@
 // Set MCOSU_TIMING_AUDIO_DRIVER=1 and generate the fixture in the runtime first.
 // Uses internal synthetic input, not OS input or Auto/Relax, to exercise the
 // actual manual circle/head handlers. This does not prove hardware input latency.
+// MCOSU_TIMING_AUDIO_SOUND_RESTART=1 invokes snd_restart after the first samples.
+// Inspect post-restart cue playback and preceding counts; music continuity is separate.
 #ifndef MCOSU_TIMING_AUDIO_INTEGRATION_H
 #define MCOSU_TIMING_AUDIO_INTEGRATION_H
 #include "Osu.h"
@@ -32,6 +34,7 @@ static void timingAudioIntegration(Osu *osu)
 	static bool skinRequested = false;
 	static bool cuesSwitched = false;
 	static bool referenceSwitched = false;
+	static bool soundRestarted = false;
 	static int skipFrames = 0;
 	static std::vector<double> frameMS;
 	static std::vector<double> denseFrameMS;
@@ -66,6 +69,14 @@ static void timingAudioIntegration(Osu *osu)
 	auto beatmap = dynamic_cast<OsuBeatmapStandard*>(osu->getSelectedBeatmap());
 	if (beatmap != NULL && beatmap->isWaiting() && beatmap->getCurMusicPosWithOffsets() >= 0) return;
 	if (timingAudioSettingsIntegration(osu, index, beatmap != NULL && !beatmap->isLoading() && beatmap->getCurMusicPosWithOffsets() >= 1000)) return;
+	if (beatmap != NULL && !soundRestarted && std::getenv("MCOSU_TIMING_AUDIO_SOUND_RESTART") != NULL
+		&& beatmap->getCurMusicPosWithOffsets() >= 3600)
+	{
+		soundRestarted = true;
+		convar->getConVarByName("snd_restart")->exec();
+		debugLog("TimingIntegration: SOUND_RESTART index=%u\n", (unsigned)index);
+		return;
+	}
 	// Optional real resource changes: verify sound selection preserves learning,
 	// including a missing replacement. Existing manual hit paths still do sampling.
 	if (beatmap != NULL && !cuesSwitched && beatmap->getCurMusicPosWithOffsets() >= 3000)

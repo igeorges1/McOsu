@@ -14,6 +14,7 @@ public:
 	~OsuTimingAudioFeedback();
 	void update();
 	void reset();
+	void reloadSounds();
 	void pause();
 	void onManualHit(long opportunityMS, long delta);
 

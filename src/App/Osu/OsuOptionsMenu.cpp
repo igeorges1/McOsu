@@ -2900,6 +2900,8 @@ void OsuOptionsMenu::onOutputDeviceSelect2(UString outputDeviceName, int id)
 
 	engine->getSound()->setOutputDevice(outputDeviceName);
 	m_outputDeviceLabel->setText(engine->getSound()->getOutputDevice());
+	if (m_osu->getSelectedBeatmap() != NULL)
+		m_osu->getSelectedBeatmap()->reloadTimingAudioSounds();
 	m_osu->getSkin()->reloadSounds();
 
 	// and update reset button as usual
@@ -2944,6 +2946,8 @@ void OsuOptionsMenu::onAudioCompatibilityModeChange(CBaseUICheckbox *checkbox)
 	onCheckboxChange(checkbox);
 	engine->getSound()->setOutputDeviceForce(engine->getSound()->getOutputDevice());
 	checkbox->setChecked(m_win_snd_fallback_dsound_ref->getBool(), false);
+	if (m_osu->getSelectedBeatmap() != NULL)
+		m_osu->getSelectedBeatmap()->reloadTimingAudioSounds();
 	m_osu->getSkin()->reloadSounds();
 }
 

@@ -2346,6 +2346,11 @@ void OsuBeatmap::resetScoreInt()
 	m_bIsFirstMissSound = true;
 }
 
+void OsuBeatmap::reloadTimingAudioSounds()
+{
+	m_timingAudioFeedback->reloadSounds();
+}
+
 void OsuBeatmap::playTimingFeedback(long opportunityMS, long delta, OsuScore::HIT result)
 {
 	if (result == OsuScore::HIT::HIT_300 || result == OsuScore::HIT::HIT_100 || result == OsuScore::HIT::HIT_50)
