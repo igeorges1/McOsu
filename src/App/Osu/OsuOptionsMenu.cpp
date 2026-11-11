@@ -19,6 +19,7 @@
 #include "SteamworksInterface.h"
 #include "Mouse.h"
 #include "File.h"
+#include "Sound.h"
 
 #include "CBaseUIContainer.h"
 #include "CBaseUIScrollView.h"
@@ -49,6 +50,7 @@
 
 #include <iostream>
 #include <fstream>
+#include <sstream>
 
 ConVar osu_options_save_on_back("osu_options_save_on_back", true, FCVAR_NONE);
 ConVar osu_options_high_quality_sliders("osu_options_high_quality_sliders", false, FCVAR_NONE);
@@ -831,6 +833,7 @@ OsuOptionsMenu::OsuOptionsMenu(Osu *osu) : OsuScreenBackable(osu)
 
 	//**************************************************************************************************************************//
 
+	addTimingAudioOptions();
 	m_skinSection = addSection("Skin");
 
 	addSubSection("Skin");
@@ -1294,6 +1297,8 @@ OsuOptionsMenu::OsuOptionsMenu(Osu *osu) : OsuScreenBackable(osu)
 
 OsuOptionsMenu::~OsuOptionsMenu()
 {
+	for (Sound *sound : m_timingAudioPreview)
+		if (sound != NULL) engine->getResourceManager()->destroyResource(sound);
 	SAFE_DELETE(m_container);
 }
 
@@ -1465,6 +1470,7 @@ void OsuOptionsMenu::update()
 		m_container->stealFocus();
 
 	m_container->update();
+	updateTimingAudioEditor();
 
 	// force context menu focus
 	if (m_contextMenu->isVisible())
@@ -1613,6 +1619,12 @@ void OsuOptionsMenu::update()
 void OsuOptionsMenu::onKeyDown(KeyboardEvent &e)
 {
 	if (!m_bVisible) return;
+	if (e == KEY_RETURN && engine->getKeyboard()->isControlDown() && timingAudioEditing())
+	{
+		onTimingAudioApply();
+		e.consume();
+		return;
+	}
 
 	m_container->onKeyDown(e);
 	if (e.isConsumed()) return;
@@ -1805,7 +1817,15 @@ void OsuOptionsMenu::setVisibleInt(bool visible, bool fromOnBack)
 	m_bVisible = visible;
 
 	if (visible)
+	{
+		syncTimingAudio(OsuTimingAudioSettings::capture());
+		m_timingAudioConfirm.clear();
+		m_timingAudioStatus->setText("Current game settings. Edit values, then Apply.");
+		m_timingAudioStatus->setTextColor(0xffffffff);
+		m_timingAudioProfileStatus->setText("Profile actions report here.");
+		m_timingAudioProfileStatus->setTextColor(0xffffffff);
 		updateLayout();
+	}
 	else
 	{
 		m_contextMenu->setVisible2(false);
@@ -1972,6 +1992,21 @@ void OsuOptionsMenu::updateLayout()
 	bool sectionTitleMatch = false;
 	bool subSectionTitleMatch = false;
 	const std::string search = m_sSearchString.length() > 0 ? m_sSearchString.toUtf8() : "";
+	// Tags keep an editor's label and input together. A query such as
+	// "timing audio cue" can match keywords separated by the field's label.
+	const auto matchesSearchTags = [&search](UString value) {
+		const std::string tags = value.toUtf8();
+		if (tags.empty() || search.empty()) return false;
+		std::istringstream words(search);
+		std::string word;
+		bool any = false;
+		while (words >> word)
+		{
+			any = true;
+			if (!Osu::findIgnoreCase(tags, word)) return false;
+		}
+		return any;
+	};
 	for (int i=0; i<m_elements.size(); i++)
 	{
 		// searching logic happens here:
@@ -1987,8 +2022,6 @@ void OsuOptionsMenu::updateLayout()
 
 		if (m_sSearchString.length() > 0)
 		{
-			const std::string searchTags = m_elements[i].searchTags.toUtf8();
-
 			// if this is a section
 			if (m_elements[i].type == 1)
 			{
@@ -2005,6 +2038,11 @@ void OsuOptionsMenu::updateLayout()
 				{
 					if (m_elements[s].type == 1) // stop at next section
 						break;
+					if (matchesSearchTags(m_elements[s].searchTags))
+					{
+						sectionMatch = true;
+						break;
+					}
 
 					for (int e=0; e<m_elements[s].elements.size(); e++)
 					{
@@ -2032,7 +2070,7 @@ void OsuOptionsMenu::updateLayout()
 				bool subSectionMatch = false;
 
 				const std::string subSectionTitle = m_elements[i].elements[0]->getName().toUtf8();
-				subSectionTitleMatch = Osu::findIgnoreCase(subSectionTitle, search) || Osu::findIgnoreCase(searchTags, search);
+				subSectionTitleMatch = Osu::findIgnoreCase(subSectionTitle, search) || matchesSearchTags(m_elements[i].searchTags);
 
 				if (inSkipSubSection)
 					inSkipSubSection = false;
@@ -2041,6 +2079,11 @@ void OsuOptionsMenu::updateLayout()
 				{
 					if (m_elements[s].type == 2) // stop at next subsection
 						break;
+					if (matchesSearchTags(m_elements[s].searchTags))
+					{
+						subSectionMatch = true;
+						break;
+					}
 
 					for (int e=0; e<m_elements[s].elements.size(); e++)
 					{
@@ -2063,7 +2106,7 @@ void OsuOptionsMenu::updateLayout()
 			bool inSkipContent = false;
 			if (!inSkipSection && !inSkipSubSection)
 			{
-				bool contentMatch = false;
+				bool contentMatch = matchesSearchTags(m_elements[i].searchTags);
 
 				if (m_elements[i].type > 2)
 				{
@@ -2857,6 +2900,8 @@ void OsuOptionsMenu::onOutputDeviceSelect2(UString outputDeviceName, int id)
 
 	engine->getSound()->setOutputDevice(outputDeviceName);
 	m_outputDeviceLabel->setText(engine->getSound()->getOutputDevice());
+	if (m_osu->getSelectedBeatmap() != NULL)
+		m_osu->getSelectedBeatmap()->reloadTimingAudioSounds();
 	m_osu->getSkin()->reloadSounds();
 
 	// and update reset button as usual
@@ -2901,6 +2946,8 @@ void OsuOptionsMenu::onAudioCompatibilityModeChange(CBaseUICheckbox *checkbox)
 	onCheckboxChange(checkbox);
 	engine->getSound()->setOutputDeviceForce(engine->getSound()->getOutputDevice());
 	checkbox->setChecked(m_win_snd_fallback_dsound_ref->getBool(), false);
+	if (m_osu->getSelectedBeatmap() != NULL)
+		m_osu->getSelectedBeatmap()->reloadTimingAudioSounds();
 	m_osu->getSkin()->reloadSounds();
 }
 
@@ -4088,6 +4135,7 @@ void OsuOptionsMenu::save()
 	std::vector<ConVar*> manualConCommands;
 	std::vector<ConVar*> manualConVars;
 	std::vector<ConVar*> removeConCommands;
+	const auto timingSettings = OsuTimingAudioSettings::capture();
 
 	manualConVars.push_back(convar->getConVarByName("osu_songbrowser_sortingtype"));
 	manualConVars.push_back(convar->getConVarByName("osu_songbrowser_scores_sortingtype"));
@@ -4132,15 +4180,26 @@ void OsuOptionsMenu::save()
 		{
 			while (in.canRead())
 			{
-				UString uLine = in.readLine();
+				UString uLine = OsuTimingAudioSettings::retainOtherConfigStatements(in.readLine().toUtf8()).c_str();
 				const char *lineChar = uLine.toUtf8();
 				std::string line(lineChar);
+				// A retained timing compound must not be removed for an option name
+				// inside a cue filename. Match its dispatched commands, save its text.
+				const auto timingCommands = OsuTimingAudioSettings::timingCompoundCommandNames(line);
+				const auto legacyMatches = [&line, &timingCommands](ConVar *var) {
+					const std::string name = var->getName().toUtf8();
+					return timingCommands.empty() ? line.find(name) != std::string::npos
+						: std::find(timingCommands.begin(), timingCommands.end(), name) != timingCommands.end();
+				};
 
 				bool keepLine = true;
 				for (int i=0; i<m_elements.size(); i++)
 				{
-					if (m_elements[i].cvar != NULL && line.find(m_elements[i].cvar->getName().toUtf8()) != std::string::npos)
+					if (m_elements[i].cvar != NULL && legacyMatches(m_elements[i].cvar))
 					{
+						// Keep the widget filter's first-command check for compounds too.
+						// A later widget assignment must not erase earlier user commands;
+						// its current value is written after the retained lines below.
 						// we don't want to remove custom convars which start with options entry convars (e.g. osu_rich_presence and osu_rich_presence_dynamic_windowtitle)
 						// so, keep lines which only have partial matches
 
@@ -4159,7 +4218,7 @@ void OsuOptionsMenu::save()
 
 				for (int i=0; i<manualConCommands.size(); i++)
 				{
-					if (line.find(manualConCommands[i]->getName().toUtf8()) != std::string::npos)
+					if (legacyMatches(manualConCommands[i]))
 					{
 						keepLine = false;
 						break;
@@ -4168,7 +4227,7 @@ void OsuOptionsMenu::save()
 
 				for (int i=0; i<manualConVars.size(); i++)
 				{
-					if (line.find(manualConVars[i]->getName().toUtf8()) != std::string::npos)
+					if (legacyMatches(manualConVars[i]))
 					{
 						keepLine = false;
 						break;
@@ -4177,7 +4236,7 @@ void OsuOptionsMenu::save()
 
 				for (int i=0; i<removeConCommands.size(); i++)
 				{
-					if (line.find(removeConCommands[i]->getName().toUtf8()) != std::string::npos)
+					if (legacyMatches(removeConCommands[i]))
 					{
 						keepLine = false;
 						break;
@@ -4215,6 +4274,8 @@ void OsuOptionsMenu::save()
 	{
 		out << manualConVars[i]->getName().toUtf8() << " " << manualConVars[i]->getString().toUtf8() <<"\n";
 	}
+	for (const auto &setting : timingSettings)
+		out << setting.first << " " << setting.second << "\n";
 
 	// hardcoded (!)
 	out << "monitor " << env->getMonitor() << "\n";
