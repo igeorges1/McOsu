@@ -13,6 +13,7 @@ import shutil
 import stat
 import subprocess
 import sys
+import uuid
 import zipfile
 
 
@@ -28,6 +29,7 @@ KIND = "mcosu-flat-runtime-v2"
 TOOLING_VERSION = "queued-preview-v1"
 QUEUE_FORMAT = 1
 BACKUP_NAME = "last-saved-state.zip"
+EXIT_HOLD = "exit-hold.json"
 BACKUP_LIMIT = 512 * 1024 * 1024
 BACKUP_PATHS = tuple(p for p in PERSISTENT if p != "screenshots")
 
@@ -490,6 +492,7 @@ def read_queue(root):
     p = q["pending"]
     require(p is None or (isinstance(p, dict) and hex_string(p.get("id"), 64)
                           and hex_string(p.get("source"), 40) and hex_string(p.get("exe_sha256"), 64)
+                          and hex_string(p.get("stage_token"), 32)
                           and p.get("phase") in ("queued", "applying", "held")), "Invalid pending release")
     return q
 
@@ -511,6 +514,7 @@ def outcome(q, result, reason, detail=None):
 
 def reconcile(root, state, q, save):
     p = q["pending"]
+    changed = False
     if p and p["phase"] == "applying":
         if not has_transaction(root) and state["current"] == p["id"]:
             outcome(q, "promoted", "reconciled committed attempt")
@@ -518,8 +522,21 @@ def reconcile(root, state, q, save):
         else:
             p["phase"] = "held"
             outcome(q, "interrupted", "promotion", "Inspect recovery state; then retry or cancel explicitly")
-        if save:
+        changed = True
+    receipt = no_links(root / CONTROL / EXIT_HOLD)
+    held = read_json(receipt) if receipt.exists() else None
+    if held is not None:
+        p = q["pending"]
+        if p and p["phase"] == "queued" and p["stage_token"] == held["stage_token"]:
+            p["phase"] = "held"
+            outcome(q, "held", "nonzero game exit", str(held["exit_code"]))
+            q["last"]["time_utc"] = held["time_utc"]
+            changed = True
+    if save:
+        if changed:
             write_queue(root, q)
+        if held is not None:
+            receipt.unlink()
     return q
 
 
@@ -652,7 +669,8 @@ def queue_action(action, root, package, incoming, replace):
             require(not p or replace, "A release is queued; pass --replace or cancel it explicitly")
             store_bundle(root, package, incoming)
             q["pending"] = release_identity(incoming) | {"phase": "queued", "staged_utc": stamp(),
-                                                         "origin": str(no_links(package))}
+                                                         "origin": str(no_links(package)),
+                                                         "stage_token": uuid.uuid4().hex}
             outcome(q, "staged", "explicit replacement" if p else "stage")
         else:
             if not q["pending"]:
@@ -689,19 +707,23 @@ def game_launch(root, arguments, defer):
     after = None
     if not defer:
         try:
+            if code != 0:
+                # queue.json is atomic. The install lock keeps launchers from
+                # overlapping, so the exit receipt has its own single writer.
+                # A concurrent replacement gets a fresh token and is not held.
+                pending = read_queue(root)["pending"]
+                if pending and pending["phase"] == "queued":
+                    write_json(root / CONTROL / EXIT_HOLD, {"stage_token": pending["stage_token"],
+                               "exit_code": code, "time_utc": stamp()})
+                    after = {"result": "held", "reason": "nonzero game exit", "candidate": pending}
             with queue_lock(root):
                 _, state = managed(root)
                 q = reconcile(root, state, read_queue(root), save=True)
                 if code == 0:
                     after = promote(root, state, q, "after-zero-exit")
-                elif q["pending"] and q["pending"]["phase"] == "queued":
-                    q["pending"]["phase"] = "held"
-                    outcome(q, "held", "nonzero game exit", str(code))
-                    write_queue(root, q)
-                    after = q["last"]
         except (Refusal, OSError, ValueError, TypeError, KeyError) as error:
             # Do not replace the game's actual exit code with an updater error.
-            after = {"result": "not-promoted", "detail": str(error)}
+            after = (after or {"result": "not-promoted"}) | {"detail": str(error)}
             print(f"Post-exit queue: {error}", file=sys.stderr)
     return {"exit_code": code, "before_launch": result, "after_exit": after}
 

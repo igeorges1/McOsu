@@ -562,6 +562,24 @@ r.operate("update", Path(sys.argv[2]), Path(sys.argv[3]))
         self.assertEqual(self.status(), held)
         self.assertEqual(r.operate("retry", self.root)["result"], "promoted")
 
+    def test_nonzero_exit_persists_hold_even_with_busy_queue(self):
+        cmd = [sys.executable, str(r.__file__), "launch", "--runtime", str(self.root), "--", "wait", "9"]
+        with owned_process(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True) as process:
+            self.await_file(self.root / "fixture-cwd.txt")
+            self.stage()
+            with r.queue_lock(self.root):
+                (self.root / "fixture-release.txt").touch()
+                stdout, stderr = process.communicate(timeout=20)
+                self.assertEqual(process.returncode, 9, stderr)
+        self.assertEqual(json.loads(stdout)["after_exit"]["result"], "held")
+        held = self.status()
+        self.assertEqual(held["queued"]["phase"], "held")
+        self.assertEqual(held["last"]["detail"], "9")
+        self.assertEqual(self.cli("launch").returncode, 0)
+        self.assertEqual(self.status(), held)
+        self.stage(2, replace=True)
+        self.assertEqual(self.status()["queued"]["phase"], "queued")
+
     def test_failed_or_missing_candidate_and_failed_backup_never_auto_retry(self):
         self.stage()
         p = self.status()["queued"]["id"]

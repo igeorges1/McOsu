@@ -47,7 +47,9 @@ entry point is [Launch-preview.cmd](Launch-preview.cmd).
 - `game_launch`, `promote`, `reconcile`: a prelaunch failure with verified old
   assets and no journal still allows the old game to open; the outcome says it
   was held. Unresolved transactions block launch. Nonzero game exit holds a
-  queued candidate observed at exit. A failed process start or killed launcher
+  queued candidate observed at exit, even when the queue lock is busy. The
+  launcher writes an atomic exit receipt bound to that stage token; the next
+  queue operation reconciles it without holding a replacement. A failed process start or killed launcher
   has no post-exit promotion; an eligible queue can still promote before the
   next launch once the runtime is idle. No process is stopped by the controller.
   `queue.json` records the exact candidate, reason and detail of the last attempt.
