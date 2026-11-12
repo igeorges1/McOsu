@@ -48,6 +48,12 @@ static void checkLiveEvaluation()
 	config.require300 = true;
 	state.configure(config);
 	assert(state.getCurrentEvaluation({10, 2}, false, 10).phase == Evaluation::GATED);
+	config.fixedHits = true;
+	assert(state.wouldResetEstimator(config));
+	const auto pending = state.getCurrentEvaluation(window, true, 0, config, true);
+	assert(pending.phase == Evaluation::WARMUP && !std::isfinite(pending.learnedMeanMapMS));
+	assert(state.getSamples() == 2);
+	near(state.getLastEvaluation().referenceMapMS, -12);
 	const auto generation = state.getGeneration();
 	state.reset();
 	assert(state.getGeneration() != generation);
@@ -58,10 +64,10 @@ static void checkRecentWindow()
 {
 	OsuTimingAudioRecentWindow history;
 	history.advance(0, true);
-	history.record(-6);
+	history.recordAcceptedHit(-6);
 	history.advance(1, true);
-	history.record(18);
-	history.record(std::numeric_limits<double>::infinity());
+	history.recordAcceptedHit(18);
+	history.recordAcceptedHit(std::numeric_limits<double>::infinity());
 	const auto moments = history.getMoments();
 	assert(moments.count == 2);
 	near(moments.meanMS, 6);
@@ -91,10 +97,18 @@ static void checkRecentWindow()
 	assert(!std::isfinite(view.spreadMapMS.lower));
 	history.advance(25, true);
 	assert(history.getMoments().count == 0);
-	history.record(25);
+	history.recordAcceptedHit(25);
 	history.reset();
 	history.apply(view, 1);
 	assert(!std::isfinite(view.learnedMeanMapMS));
+
+	history.advance(100, false);
+	history.recordAcceptedHit(-50); // accepted before the playback clock starts
+	history.advance(110, false);
+	history.advance(111, true);
+	history.recordAcceptedHit(0);
+	assert(history.getMoments().count == 2);
+	near(history.getMoments().meanMS, -25);
 }
 
 static void checkTransition()
