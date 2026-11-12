@@ -188,7 +188,7 @@ OsuTimingAudioView OsuTimingAudioFeedback::getCurrentView(OsuTimingAudioView::Mo
 		// Describe settings that will apply on resume without resetting the live learner.
 		const bool pendingReset = m_state.wouldResetEstimator(config)
 			|| needsActivities(config, osu_timing_audio_exclude_activity.getBool());
-		view.evaluation = m_state.getCurrentEvaluation(inputs.window300, inputs.recent, inputs.targetMapMS(), config, pendingReset);
+		view.evaluation = m_state.getCurrentEvaluation(inputs.window300, inputs.recent, inputs.targetMapMS(), config, pendingReset, &view.band);
 		view.generation = m_state.getGeneration();
 		view.bandMode = config.bandMode;
 		view.speed = inputs.window300.speed;

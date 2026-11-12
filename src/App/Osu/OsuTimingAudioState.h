@@ -180,8 +180,9 @@ public:
 	}
 
 	OsuTimingAudioEvaluation getCurrentEvaluation(Window window, bool recent, long double targetMapMS,
-		const Config &config, bool pendingReset) const
+		const Config &config, bool pendingReset, OsuTimingAudioView::BandStatus *status = NULL) const
 	{
+		if (status != NULL) *status = OsuTimingAudioView::BandStatus();
 		if (!std::isfinite(window.speed) || window.speed <= 0.0) return invalidEvaluation(recent);
 		const volatile double window300MS = window.mapMS / window.speed;
 		if (!std::isfinite(window300MS) || window300MS < 0.0) return invalidEvaluation(recent);
@@ -189,8 +190,15 @@ public:
 		Result current = {SILENT, pendingReset ? 0.0 : m_baselineMS, 0, pendingReset ? 0 : m_samples,
 			0, pendingReset ? 0.0 : m_varianceMS2, false, false};
 		long double mapHalfWidthMS = 0;
-		const volatile double halfWidthMS = bandHalfWidth(window, config, current, mapHalfWidthMS);
+		const volatile double halfWidthMS = bandHalfWidth(window, config, current, mapHalfWidthMS, status);
 		current.halfWidthMS = halfWidthMS;
+		if (status != NULL)
+		{
+			status->learnedHits = current.precedingSamples;
+			status->resolvedHalfWidthMS = halfWidthMS;
+			if (status->limit == OsuTimingAudioView::BandStatus::NONE)
+				status->baseHalfWidthMS = halfWidthMS;
+		}
 		const auto evaluation = describeEvaluation(current, recent, isReady(config, recent, current.precedingSamples),
 			isInside300(config, window300MS, current), window.speed, targetMapMS, mapHalfWidthMS);
 		return evaluation.phase == OsuTimingAudioEvaluation::INVALID ? invalidEvaluation(recent) : evaluation;
@@ -363,7 +371,8 @@ private:
 		return fraction * window.mapMS;
 	}
 
-	static double bandHalfWidth(Window window, const Config &config, Result &result, long double &mapWidth)
+	static double bandHalfWidth(Window window, const Config &config, Result &result, long double &mapWidth,
+		OsuTimingAudioView::BandStatus *status = NULL)
 	{
 		mapWidth = static_cast<long double>(config.deadZoneMS) * window.speed;
 		if (config.bandMode == FIXED_MS) return config.deadZoneMS;
@@ -383,6 +392,12 @@ private:
 				&& low >= 0.0 && high >= low && width >= 0.0)
 			{
 				mapWidth = std::max(low, std::min(high, width));
+				if (status != NULL)
+				{
+					status->baseHalfWidthMS = width / window.speed;
+					status->limit = width < low ? OsuTimingAudioView::BandStatus::MINIMUM
+						: (width > high ? OsuTimingAudioView::BandStatus::MAXIMUM : OsuTimingAudioView::BandStatus::NONE);
+				}
 				return mapWidth / window.speed;
 			}
 		}

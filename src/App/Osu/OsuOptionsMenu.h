@@ -13,6 +13,7 @@
 #include "OsuTimingAudioSettings.h"
 
 class Osu;
+struct OsuTimingAudioView;
 
 class OsuUIButton;
 class OsuUISlider;
@@ -118,6 +119,8 @@ private:
 	void updateHPDrainSelectLabel();
 
 	void addTimingAudioOptions();
+	OsuTimingAudioView appliedTimingAudioView(const OsuTimingAudioSettings::Values &applied) const;
+	void onCopyTimingAudioSetup();
 	void syncTimingAudio(const OsuTimingAudioSettings::Values &values);
 	OsuTimingAudioSettings::Values timingAudioDraft() const;
 	void updateTimingAudioEditor();
@@ -361,6 +364,8 @@ private:
 	std::vector<TimingAudioField> m_timingAudioFields;
 	OsuUIButton *m_timingAudioViewButton = NULL;
 	CBaseUILabel *m_timingAudioStatus;
+	CBaseUILabel *m_timingAudioSetupReference, *m_timingAudioSetupBand, *m_timingAudioSetupLearning;
+	double m_timingAudioSetupNextUpdate = 0;
 	CBaseUILabel *m_timingAudioProfileStatus = NULL;
 	CBaseUITextbox *m_timingAudioProfileName;
 	OsuUIButton *m_timingAudioMuteButton, *m_timingAudioWidthButton, *m_timingAudioLoadButton;
