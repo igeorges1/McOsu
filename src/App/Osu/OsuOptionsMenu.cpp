@@ -1107,8 +1107,12 @@ OsuOptionsMenu::OsuOptionsMenu(Osu *osu) : OsuScreenBackable(osu)
 	addCheckbox("Draw Key Overlay", convar->getConVarByName("osu_draw_inputoverlay"));
 	addCheckbox("Draw Scrubbing Timeline", convar->getConVarByName("osu_draw_scrubbing_timeline"));
 	addCheckbox("Draw Miss Window on HitErrorBar", convar->getConVarByName("osu_hud_hiterrorbar_showmisswindow"));
-	addCheckbox("Timing Audio on Hit Error Bar", "Shows the latest eligible manual hit's timing audio evaluation.\nMarker: audio reference. Strip: silent cue band.\nBracket: preceding spread (+/- one population SD), with a tick at the learned mean.",
+	addCheckbox("Timing Audio on Hit Error Bar", "Shows the latest eligible manual hit's timing audio evaluation.\nWhite bracket: preceding learned mean +/- one population standard deviation.\nCyan strip: silent band from the selected fixed, map-relative or adaptive width.\nUnclamped adaptive width at 1x spread matches the bracket width.",
 		convar->getConVarByName("osu_hud_hiterrorbar_timing_audio"));
+	addCheckbox("Timing Audio Caption", "Show the last hit's audio reference mode and status above the bar.\nThis setting is independent of the unstable rate and timing audio marks.",
+		convar->getConVarByName("osu_hud_hiterrorbar_timing_audio_caption"));
+	addCheckbox("Timing Audio Markers Only", "Hide the spread bracket and silent band. Keep the white learned-mean tick and yellow audio reference tick when available.\nThe ticks share a center in Recent mode. Beatmap mode can place them at different times.",
+		convar->getConVarByName("osu_hud_hiterrorbar_timing_audio_markers_only"));
 	addSpacer();
 	addCheckbox("Draw Stats: pp", "Realtime pp counter.\nDynamically calculates earned pp by incrementally updating the star rating.", convar->getConVarByName("osu_draw_statistics_pp"));
 	addCheckbox("Draw Stats: pp (SS)", "Max possible total pp for active mods (full combo + perfect acc).", convar->getConVarByName("osu_draw_statistics_perfectpp"));

@@ -25,7 +25,7 @@ namespace OsuTimingAudioHUD
 
 	// Same map-ms divisor and half-width as the hit-error entries. Clip ranges
 	// at the bar edge, without turning an off-bar reference into a false mark.
-	inline Geometry project(const OsuTimingAudioEvaluation &evaluation, float windowMapMS, float halfWidth)
+	inline Geometry project(const OsuTimingAudioEvaluation &evaluation, float windowMapMS, float halfWidth, bool markersOnly = false)
 	{
 		Geometry geometry;
 		if (!std::isfinite(windowMapMS) || windowMapMS <= 0 || !std::isfinite(halfWidth) || halfWidth <= 0)
@@ -48,15 +48,18 @@ namespace OsuTimingAudioHUD
 		};
 		geometry.showReference = std::abs(evaluation.referenceMapMS) <= windowMapMS;
 		if (geometry.showReference) geometry.reference = position(evaluation.referenceMapMS);
-		geometry.spread = projectRange(evaluation.spreadMapMS);
-		if (geometry.spread.visible)
+		if (evaluation.spreadMapMS.lower <= evaluation.spreadMapMS.upper)
 		{
 			// The mean belongs to the evaluated spread, even if its drawn span is clipped.
 			const double meanMapMS = evaluation.spreadMapMS.lower * 0.5 + evaluation.spreadMapMS.upper * 0.5;
 			geometry.showMean = std::abs(meanMapMS) <= windowMapMS;
 			if (geometry.showMean) geometry.mean = position(meanMapMS);
 		}
-		geometry.silent = projectRange(evaluation.silentMapMS);
+		if (!markersOnly)
+		{
+			geometry.spread = projectRange(evaluation.spreadMapMS);
+			geometry.silent = projectRange(evaluation.silentMapMS);
+		}
 		return geometry;
 	}
 }

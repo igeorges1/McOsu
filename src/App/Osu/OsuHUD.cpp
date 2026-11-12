@@ -101,6 +101,8 @@ ConVar osu_hud_hiterrorbar_entry_misaim_height_multiplier("osu_hud_hiterrorbar_e
 ConVar osu_hud_hiterrorbar_scale("osu_hud_hiterrorbar_scale", 1.0f, FCVAR_NONE);
 ConVar osu_hud_hiterrorbar_showmisswindow("osu_hud_hiterrorbar_showmisswindow", false, FCVAR_NONE);
 ConVar osu_hud_hiterrorbar_timing_audio("osu_hud_hiterrorbar_timing_audio", false, FCVAR_NONE);
+ConVar osu_hud_hiterrorbar_timing_audio_caption("osu_hud_hiterrorbar_timing_audio_caption", true, FCVAR_NONE);
+ConVar osu_hud_hiterrorbar_timing_audio_markers_only("osu_hud_hiterrorbar_timing_audio_markers_only", false, FCVAR_NONE);
 ConVar osu_hud_hiterrorbar_width_percent_with_misswindow("osu_hud_hiterrorbar_width_percent_with_misswindow", 0.4f, FCVAR_NONE);
 ConVar osu_hud_hiterrorbar_width_percent("osu_hud_hiterrorbar_width_percent", 0.15f, FCVAR_NONE);
 ConVar osu_hud_hiterrorbar_height_percent("osu_hud_hiterrorbar_height_percent", 0.007f, FCVAR_NONE);
@@ -2310,7 +2312,9 @@ void OsuHUD::drawHitErrorBar(Graphics *g, float hitWindow300, float hitWindow100
 	const float hudScale = osu_hud_scale.getFloat() * osu_hud_hiterrorbar_scale.getFloat();
 	const float entryHeight = m_osu->getScreenHeight() * osu_hud_hiterrorbar_height_percent.getFloat()
 		* hudScale * osu_hud_hiterrorbar_bar_height_scale.getFloat();
-	UString label = timingAudioLabel(evaluation, osu_hud_hiterrorbar_showmisswindow.getBool() ? hitWindowMiss : hitWindow50);
+	UString label;
+	if (osu_hud_hiterrorbar_timing_audio_caption.getBool())
+		label = timingAudioLabel(evaluation, osu_hud_hiterrorbar_showmisswindow.getBool() ? hitWindowMiss : hitWindow50);
 	// One upright caption even when several copies of the bar are enabled.
 	const auto drawLabel = [&](Vector2 anchor, Vector2 alignment)
 	{
@@ -2432,16 +2436,16 @@ static void drawTimingAudioGeometry(Graphics *g, const OsuTimingAudioHUD::Geomet
 		const int x = (int)std::round(geometry.reference);
 		stroke(x - 1, bandY + 4, 3, 4, 0xffffe097);
 	}
+	const int spreadY = -bandY - 4;
 	if (geometry.spread.visible)
 	{
-		const int y = -bandY - 4;
 		const int left = (int)std::round(geometry.spread.lower);
 		const int right = (int)std::round(geometry.spread.upper);
-		stroke(left, y, std::max(1, right - left), 1, 0xffffffff);
-		if (geometry.spread.showLowerCap) stroke(left, y, 1, 4, 0xffffffff);
-		if (geometry.spread.showUpperCap && right != left) stroke(right, y, 1, 4, 0xffffffff);
-		if (geometry.showMean) stroke((int)std::round(geometry.mean), y - 3, 1, 4, 0xffffffff);
+		stroke(left, spreadY, std::max(1, right - left), 1, 0xffffffff);
+		if (geometry.spread.showLowerCap) stroke(left, spreadY, 1, 4, 0xffffffff);
+		if (geometry.spread.showUpperCap && right != left) stroke(right, spreadY, 1, 4, 0xffffffff);
 	}
+	if (geometry.showMean) stroke((int)std::round(geometry.mean), spreadY - 3, 1, 4, 0xffffffff);
 }
 
 void OsuHUD::drawHitErrorBarInt(Graphics *g, float hitWindow300, float hitWindow100, float hitWindow50, float hitWindowMiss, const OsuTimingAudioEvaluation &evaluation)
@@ -2504,7 +2508,8 @@ void OsuHUD::drawHitErrorBarInt(Graphics *g, float hitWindow300, float hitWindow
 	}
 
 	if (evaluation.phase != OsuTimingAudioEvaluation::OFF)
-		drawTimingAudioGeometry(g, OsuTimingAudioHUD::project(evaluation, totalHitWindowLength, size.x / 2.0f), size.y, alpha);
+		drawTimingAudioGeometry(g, OsuTimingAudioHUD::project(evaluation, totalHitWindowLength, size.x / 2.0f,
+			osu_hud_hiterrorbar_timing_audio_markers_only.getBool()), size.y, alpha);
 
 	// draw hit errors
 	{

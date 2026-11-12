@@ -20,6 +20,7 @@ int main()
 	assert(state.getLastEvaluation().phase == Evaluation::WAITING);
 	const State::Window fast = {50, 1.5};
 	const State::Window slow = {50, 0.75};
+	state.advance(0, fast.speed);
 	const auto target = OsuTimingAudioReference::calculate(0, fast.speed, 1.5L, {50.9, 100.9, 150.9});
 	assert(target.valid);
 
@@ -40,6 +41,11 @@ int main()
 	near(shifted.spread.upper, 27);
 	near(shifted.silent.lower, 41.4);
 	near(shifted.silent.upper, 48.6);
+	const auto shiftedMarkers = OsuTimingAudioHUD::project(beatmap, 150, 90, true);
+	assert(!shiftedMarkers.spread.visible && !shiftedMarkers.silent.visible);
+	assert(shiftedMarkers.showReference && shiftedMarkers.showMean);
+	near(shiftedMarkers.reference, shifted.reference);
+	near(shiftedMarkers.mean, shifted.mean);
 
 	// Reading and projecting cannot advance the estimator or replace the hit.
 	const double mean = state.getBaselineMS(), variance = state.getVarianceMS2();
@@ -48,7 +54,8 @@ int main()
 	near(wideWindow.silent.upper, 32.4);
 	assert(state.getSamples() == 3 && state.getBaselineMS() == mean && state.getVarianceMS2() == variance);
 	near(state.getLastEvaluation().referenceMapMS, 75);
-	state.advance(0, 2.0); // a rate change between eligible hits leaves the snapshot at the hit's rate
+	state.advance(1000, 2.0); // time and rate can advance without a new evaluation
+	near(state.getActiveMS(), 500);
 	const auto afterRateChange = OsuTimingAudioHUD::project(state.getLastEvaluation(), 150, 90);
 	near(afterRateChange.reference, 45);
 	near(afterRateChange.spread.lower, 9);
@@ -72,6 +79,9 @@ int main()
 	near((relative.spread.lower + relative.spread.upper) / 2, 23.5);
 	assert(relative.showMean);
 	near(relative.mean, relative.reference);
+	const auto recentMarkers = OsuTimingAudioHUD::project(recent, 150, 150, true);
+	assert(recentMarkers.showReference && recentMarkers.showMean);
+	near(recentMarkers.mean, recentMarkers.reference);
 
 	config.bandMode = State::ADAPTIVE_SPREAD;
 	config.adaptiveScale = 2;
@@ -152,6 +162,8 @@ int main()
 	near(offBarHit.silentMapMS.upper, 410);
 	const auto clipped = OsuTimingAudioHUD::project(offBarHit, 149.5, 149.5);
 	assert(!clipped.showReference && !clipped.silent.visible);
+	const auto clippedMarkers = OsuTimingAudioHUD::project(offBarHit, 149.5, 149.5, true);
+	assert(!clippedMarkers.showReference && !clippedMarkers.showMean);
 
 	offBar.sampleMap(20, {49, 2.0}, false, 0, 0);
 	const auto partial = OsuTimingAudioHUD::project(offBar.getLastEvaluation(), 300, 300);
@@ -161,4 +173,6 @@ int main()
 	near(partial.mean, 210); // midpoint of 20..400, not midpoint of the clipped 20..300
 	const auto meanOffBar = OsuTimingAudioHUD::project(offBar.getLastEvaluation(), 149.5, 149.5);
 	assert(meanOffBar.spread.visible && !meanOffBar.showMean && !meanOffBar.spread.showUpperCap);
+	const auto meanOffBarMarkers = OsuTimingAudioHUD::project(offBar.getLastEvaluation(), 149.5, 149.5, true);
+	assert(meanOffBarMarkers.showReference && !meanOffBarMarkers.showMean);
 }
