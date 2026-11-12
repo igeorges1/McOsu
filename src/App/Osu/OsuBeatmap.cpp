@@ -2351,9 +2351,9 @@ void OsuBeatmap::reloadTimingAudioSounds()
 	m_timingAudioFeedback->reloadSounds();
 }
 
-OsuTimingAudioEvaluation OsuBeatmap::getTimingAudioEvaluation() const
+OsuTimingAudioView OsuBeatmap::getTimingAudioView(OsuTimingAudioView::Mode mode) const
 {
-	return m_timingAudioFeedback->getLastEvaluation();
+	return m_timingAudioFeedback->getCurrentView(mode);
 }
 
 void OsuBeatmap::playTimingFeedback(long opportunityMS, long delta, OsuScore::HIT result)

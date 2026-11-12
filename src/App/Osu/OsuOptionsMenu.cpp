@@ -6,6 +6,7 @@
 //===============================================================================//
 
 #include "OsuOptionsMenu.h"
+#include "OsuTimingAudioEvaluation.h"
 
 #include "SoundEngine.h"
 #include "Engine.h"
@@ -1107,12 +1108,21 @@ OsuOptionsMenu::OsuOptionsMenu(Osu *osu) : OsuScreenBackable(osu)
 	addCheckbox("Draw Key Overlay", convar->getConVarByName("osu_draw_inputoverlay"));
 	addCheckbox("Draw Scrubbing Timeline", convar->getConVarByName("osu_draw_scrubbing_timeline"));
 	addCheckbox("Draw Miss Window on HitErrorBar", convar->getConVarByName("osu_hud_hiterrorbar_showmisswindow"));
-	addCheckbox("Timing Audio on Hit Error Bar", "Shows the latest eligible manual hit's timing audio evaluation.\nWhite bracket: preceding learned mean +/- one population standard deviation.\nCyan strip: silent band from the selected fixed, map-relative or adaptive width.\nUnclamped adaptive width at 1x spread matches the bracket width.",
+	addCheckbox("Timing Audio on Hit Error Bar", "Shows current timing audio state, including the latest eligible manual hit.\nWhite bracket: the selected statistics view's mean +/- one population standard deviation.\nCyan strip: actual audio silent band from the fixed, map-relative or adaptive rule.",
 		convar->getConVarByName("osu_hud_hiterrorbar_timing_audio"));
-	addCheckbox("Timing Audio Caption", "Show the last hit's audio reference mode and status above the bar.\nThis setting is independent of the unstable rate and timing audio marks.",
+	addCheckbox("Timing Audio Caption", "Show the current audio reference mode and status by the bar.\nThis setting is independent of the unstable rate and timing audio marks.",
 		convar->getConVarByName("osu_hud_hiterrorbar_timing_audio_caption"));
-	addCheckbox("Timing Audio Markers Only", "Hide the spread bracket and silent band. Keep the white learned-mean tick and yellow audio reference tick when available.\nThe ticks share a center in Recent mode. Beatmap mode can place them at different times.",
+	addCheckbox("Timing Audio Markers Only", "Hide both intervals regardless of the individual spread and silent band settings.\nKeep the white statistics mean and yellow audio reference ticks when available.\nThe centers can differ, especially in the Recent Window view.",
 		convar->getConVarByName("osu_hud_hiterrorbar_timing_audio_markers_only"));
+	addCheckbox("Timing Audio Spread Bracket", "Show the white spread bracket. The statistics mean tick stays visible when available.\nMarkers Only hides the bracket while enabled.",
+		convar->getConVarByName("osu_hud_hiterrorbar_timing_audio_spread"));
+	addCheckbox("Timing Audio Silent Band", "Show the cyan silent band. The audio reference tick stays visible when available.\nMarkers Only hides the band while enabled.",
+		convar->getConVarByName("osu_hud_hiterrorbar_timing_audio_silent_band"));
+	m_timingAudioViewButton = addButton("Timing Audio View");
+	m_elements.back().cvar = convar->getConVarByName("osu_hud_hiterrorbar_timing_audio_view");
+	m_timingAudioViewButton->setTooltipText("Audio estimate: current learned statistics.\nRecent window: accepted hits from the last five unpaused play seconds.\nProjected: hypothetical next hit at the learned average or audio reference.\nThe yellow reference and cyan silent band always show the actual audio model.");
+	m_timingAudioViewButton->setClickCallback(fastdelegate::MakeDelegate(this, &OsuOptionsMenu::onTimingAudioView));
+	updateTimingAudioViewButton();
 	addSpacer();
 	addCheckbox("Draw Stats: pp", "Realtime pp counter.\nDynamically calculates earned pp by incrementally updating the star rating.", convar->getConVarByName("osu_draw_statistics_pp"));
 	addCheckbox("Draw Stats: pp (SS)", "Max possible total pp for active mods (full combo + perfect acc).", convar->getConVarByName("osu_draw_statistics_perfectpp"));
@@ -1825,6 +1835,7 @@ void OsuOptionsMenu::setVisibleInt(bool visible, bool fromOnBack)
 	if (visible)
 	{
 		syncTimingAudio(OsuTimingAudioSettings::capture());
+		updateTimingAudioViewButton();
 		m_timingAudioConfirm.clear();
 		m_timingAudioStatus->setText("Current game settings. Edit values, then Apply.");
 		m_timingAudioStatus->setTextColor(0xffffffff);
@@ -2991,6 +3002,31 @@ void OsuOptionsMenu::onCM360CalculatorLinkClicked()
 
 	m_osu->getNotificationOverlay()->addNotification("Opening browser, please wait ...", 0xffffffff, false, 0.75f);
 	env->openURLInDefaultBrowser("https://www.mouse-sensitivity.com/");
+}
+
+void OsuOptionsMenu::updateTimingAudioViewButton()
+{
+	if (m_timingAudioViewButton == NULL) return;
+	const auto mode = OsuTimingAudioView::fromSetting(convar->getConVarByName("osu_hud_hiterrorbar_timing_audio_view")->getInt());
+	m_timingAudioViewButton->setText(UString::format("Timing Audio View: %s", OsuTimingAudioView::name(mode)));
+}
+
+void OsuOptionsMenu::onTimingAudioView()
+{
+	m_contextMenu->setPos(m_timingAudioViewButton->getPos());
+	m_contextMenu->setRelPos(m_timingAudioViewButton->getRelPos());
+	m_contextMenu->begin(m_timingAudioViewButton->getSize().x);
+	for (int i = 0; i < OsuTimingAudioView::MODE_COUNT; ++i)
+		m_contextMenu->addButton(OsuTimingAudioView::name(OsuTimingAudioView::fromSetting(i)), i);
+	m_contextMenu->end(false, false);
+	m_contextMenu->setClickCallback(fastdelegate::MakeDelegate(this, &OsuOptionsMenu::onTimingAudioViewSelected));
+}
+
+void OsuOptionsMenu::onTimingAudioViewSelected(UString, int id)
+{
+	if (id < 0 || id >= OsuTimingAudioView::MODE_COUNT) return;
+	convar->getConVarByName("osu_hud_hiterrorbar_timing_audio_view")->setValue(id);
+	updateTimingAudioViewButton();
 }
 
 void OsuOptionsMenu::onNotelockSelect()

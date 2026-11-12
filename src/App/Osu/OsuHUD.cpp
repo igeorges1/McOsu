@@ -103,6 +103,9 @@ ConVar osu_hud_hiterrorbar_showmisswindow("osu_hud_hiterrorbar_showmisswindow", 
 ConVar osu_hud_hiterrorbar_timing_audio("osu_hud_hiterrorbar_timing_audio", false, FCVAR_NONE);
 ConVar osu_hud_hiterrorbar_timing_audio_caption("osu_hud_hiterrorbar_timing_audio_caption", true, FCVAR_NONE);
 ConVar osu_hud_hiterrorbar_timing_audio_markers_only("osu_hud_hiterrorbar_timing_audio_markers_only", false, FCVAR_NONE);
+ConVar osu_hud_hiterrorbar_timing_audio_spread("osu_hud_hiterrorbar_timing_audio_spread", true, FCVAR_NONE);
+ConVar osu_hud_hiterrorbar_timing_audio_silent_band("osu_hud_hiterrorbar_timing_audio_silent_band", true, FCVAR_NONE);
+ConVar osu_hud_hiterrorbar_timing_audio_view("osu_hud_hiterrorbar_timing_audio_view", 0, FCVAR_NONE);
 ConVar osu_hud_hiterrorbar_width_percent_with_misswindow("osu_hud_hiterrorbar_width_percent_with_misswindow", 0.4f, FCVAR_NONE);
 ConVar osu_hud_hiterrorbar_width_percent("osu_hud_hiterrorbar_width_percent", 0.15f, FCVAR_NONE);
 ConVar osu_hud_hiterrorbar_height_percent("osu_hud_hiterrorbar_height_percent", 0.007f, FCVAR_NONE);
@@ -2279,23 +2282,24 @@ void OsuHUD::drawHitErrorBar(Graphics *g, OsuBeatmapStandard *beatmapStd)
 	}
 }
 
-static UString timingAudioLabel(const OsuTimingAudioEvaluation &evaluation, float windowMapMS)
+static UString timingAudioLabel(const OsuTimingAudioView &view, float windowMapMS)
 {
 	using Evaluation = OsuTimingAudioEvaluation;
+	const auto &evaluation = view.evaluation;
 	switch (evaluation.phase)
 	{
 	case Evaluation::OFF: return "";
-	case Evaluation::WAITING: return "Timing audio | Waiting for manual hit";
-	case Evaluation::INVALID: return "Last timing hit | Invalid reference or window";
+	case Evaluation::WAITING: return "Timing audio | Waiting for gameplay";
+	case Evaluation::INVALID: return "Timing audio | Invalid reference or window";
 	default: break;
 	}
-	UString label = evaluation.recent ? "Last timing hit | Recent" : "Last timing hit | Beatmap";
+	UString label = OsuTimingAudioView::name(view.mode);
+	label.append(evaluation.recent ? " | Recent ref" : " | Beatmap ref");
 	if (evaluation.phase == Evaluation::WARMUP) label.append(" | Warming up");
 	else if (evaluation.phase == Evaluation::GATED) label.append(" | 300 gate");
 	else if (evaluation.fixedFallback) label.append(" | Fixed fallback");
 	else if (!std::isfinite(evaluation.spreadMapMS.lower)) label.append(" | SD unavailable");
 	if (evaluation.output == Evaluation::MUTED) label.append(" | Muted");
-	else if (evaluation.output == Evaluation::CUE_UNAVAILABLE) label.append(" | Cue unavailable");
 	if (std::abs(evaluation.referenceMapMS) > windowMapMS) label.append(" | Ref off bar");
 	return label;
 }
@@ -2305,16 +2309,28 @@ void OsuHUD::drawHitErrorBar(Graphics *g, float hitWindow300, float hitWindow100
 	const Vector2 center = Vector2(m_osu->getScreenWidth()/2.0f, m_osu->getScreenHeight() - m_osu->getScreenHeight()*2.15f*osu_hud_hiterrorbar_height_percent.getFloat()*osu_hud_scale.getFloat()*osu_hud_hiterrorbar_scale.getFloat() - m_osu->getScreenHeight()*osu_hud_hiterrorbar_offset_percent.getFloat());
 	OsuTimingAudioEvaluation evaluation;
 	evaluation.phase = OsuTimingAudioEvaluation::OFF;
-	if (beatmap != NULL && osu_hud_hiterrorbar_timing_audio.getBool())
-		evaluation = beatmap->getTimingAudioEvaluation();
+	UString label;
+	if (beatmap != NULL)
+	{
+		if (m_timingAudioBeatmap != beatmap)
+		{
+			m_timingAudioBeatmap = beatmap;
+			m_timingAudioTransition = OsuTimingAudioHUD::Transition();
+		}
+		OsuTimingAudioView view;
+		view.evaluation.phase = OsuTimingAudioEvaluation::OFF;
+		if (osu_hud_hiterrorbar_timing_audio.getBool())
+			view = beatmap->getTimingAudioView(OsuTimingAudioView::fromSetting(osu_hud_hiterrorbar_timing_audio_view.getInt()));
+		const float window = osu_hud_hiterrorbar_showmisswindow.getBool() ? hitWindowMiss : hitWindow50;
+		evaluation = m_timingAudioTransition.present(view, window, engine->getTime());
+		if (osu_hud_hiterrorbar_timing_audio_caption.getBool())
+			label = timingAudioLabel(view, window);
+	}
 
 	const float alpha = osu_hud_hiterrorbar_alpha.getFloat();
 	const float hudScale = osu_hud_scale.getFloat() * osu_hud_hiterrorbar_scale.getFloat();
 	const float entryHeight = m_osu->getScreenHeight() * osu_hud_hiterrorbar_height_percent.getFloat()
 		* hudScale * osu_hud_hiterrorbar_bar_height_scale.getFloat();
-	UString label;
-	if (osu_hud_hiterrorbar_timing_audio_caption.getBool())
-		label = timingAudioLabel(evaluation, osu_hud_hiterrorbar_showmisswindow.getBool() ? hitWindowMiss : hitWindow50);
 	// One upright caption even when several copies of the bar are enabled.
 	const auto drawLabel = [&](Vector2 anchor, Vector2 alignment)
 	{
@@ -2508,8 +2524,12 @@ void OsuHUD::drawHitErrorBarInt(Graphics *g, float hitWindow300, float hitWindow
 	}
 
 	if (evaluation.phase != OsuTimingAudioEvaluation::OFF)
+	{
+		const bool markersOnly = osu_hud_hiterrorbar_timing_audio_markers_only.getBool();
 		drawTimingAudioGeometry(g, OsuTimingAudioHUD::project(evaluation, totalHitWindowLength, size.x / 2.0f,
-			osu_hud_hiterrorbar_timing_audio_markers_only.getBool()), size.y, alpha);
+			!markersOnly && osu_hud_hiterrorbar_timing_audio_spread.getBool(),
+			!markersOnly && osu_hud_hiterrorbar_timing_audio_silent_band.getBool()), size.y, alpha);
+	}
 
 	// draw hit errors
 	{
@@ -3595,6 +3615,7 @@ void OsuHUD::selectVolumeNext()
 void OsuHUD::resetHitErrorBar()
 {
 	m_hiterrors.clear();
+	m_timingAudioTransition = OsuTimingAudioHUD::Transition();
 }
 
 McRect OsuHUD::getSkipClickRect()

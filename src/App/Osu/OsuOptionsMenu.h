@@ -127,6 +127,9 @@ private:
 	void onTimingAudioMute();
 	void onTimingAudioWidth();
 	void onTimingAudioWidthSelected(UString text, int id);
+	void onTimingAudioView();
+	void onTimingAudioViewSelected(UString text, int id);
+	void updateTimingAudioViewButton();
 	void onTimingAudioSaveProfile();
 	void onTimingAudioLoadProfile();
 	void onTimingAudioProfileSelected(UString name, int id);
@@ -356,6 +359,7 @@ private:
 		CBaseUITextbox *textbox;
 	};
 	std::vector<TimingAudioField> m_timingAudioFields;
+	OsuUIButton *m_timingAudioViewButton = NULL;
 	CBaseUILabel *m_timingAudioStatus;
 	CBaseUILabel *m_timingAudioProfileStatus = NULL;
 	CBaseUITextbox *m_timingAudioProfileName;
