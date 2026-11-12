@@ -1,0 +1,36 @@
+{
+  "case": "preroll-history",
+  "boundary": "production RecentWindow helper; historical API bridge only",
+  "sources": {
+    "old": {
+      "revision": "2f5d88bab2f89d33e50ab9ddde014ceac480505d",
+      "files": {
+        "OsuTimingAudioRecentWindow.h": {
+          "path": "src/App/Osu/OsuTimingAudioRecentWindow.h",
+          "blob": "35f8b0db02fabac4d74ba70ff5ef1c20cfbfff6c",
+          "sha256": "2943c55e58c673f5bcc7c48d6505ef614f4cbbdadfc921633f1053cf89e66936"
+        },
+        "OsuTimingAudioEvaluation.h": {
+          "path": "src/App/Osu/OsuTimingAudioEvaluation.h",
+          "blob": "b7aa2414bc365159b97ac2210e208e0e5c6a5b39",
+          "sha256": "e62d39fe8fccbc31a56c79657d85b229a2d76927d105df9635becff45da1fe45"
+        }
+      }
+    },
+    "fixed": {
+      "revision": "5f2289edce8c4060d0e9f314c945fd5701d09d46",
+      "files": {
+        "OsuTimingAudioRecentWindow.h": {
+          "path": "src/App/Osu/OsuTimingAudioRecentWindow.h",
+          "blob": "68bd59f16e338ead1344224438d21baccacb410c",
+          "sha256": "5c9edd1b221195c397c65656337179bfd81d9bbb4562f7d870bf1829f22bcf00"
+        },
+        "OsuTimingAudioEvaluation.h": {
+          "path": "src/App/Osu/OsuTimingAudioEvaluation.h",
+          "blob": "b7aa2414bc365159b97ac2210e208e0e5c6a5b39",
+          "sha256": "e62d39fe8fccbc31a56c79657d85b229a2d76927d105df9635becff45da1fe45"
+        }
+      }
+    }
+  }
+}

@@ -50,6 +50,11 @@ With the trial defaults, a mature learner starting at zero reaches its cap after
 
 ## Applying, saving and maintaining the map
 
+The [supported verification command and coverage map](verification.md) run the
+eight timing/HUD helper suites, settings inventory and historical pre-roll case.
+Their receipts establish software state/geometry boundaries; native rendering,
+input, audio and human usefulness remain separate checks.
+
 Audio changes in the editor take effect after Apply or Ctrl+Enter. Closing discards unapplied edits. The immediate mute button and HUD options update current settings directly. Hover a numeric label or control to see its effect and, for draft audio fields, its range, Apply behavior and any inactive dependency. Opening Options or changing the search does not rewrite HUD values. Apply validates a full batch before writing any audio value. Named profiles include the applied audio settings, including mute, startup, idle and failed-cue policy. HUD settings save with Options and stay outside audio profiles. Loading an older audio profile fills only recognized new keys with their registered original-behaviour defaults. Unknown, duplicate, invalid or otherwise incomplete profiles are rejected as a whole. Saving over a name or deleting requires a second matching action within ten seconds. Standalone timing settings are saved with their applied values. Retained compound commands keep their original text and run before those settings. [Schema and profile parser](../src/App/Osu/OsuTimingAudioSettings.h), [Options save](../src/App/Osu/OsuOptionsMenu.cpp)
 
 Update this map in the same change as timing behaviour, controls/defaults, dependencies, clocks/resets, persistence, cue output or HUD changes. Regenerate the [control reference](timing-audio-controls.md) with `python tests/check-timing-audio-settings.py --write-docs`, then run it without the flag to check registration, metadata and the tracked reference. The source owner updates conceptual edges and lifecycle explanations. The bench reviews them against the frozen source revision, and build evidence ties that revision to the actual package or deployment.
