@@ -6,8 +6,8 @@
 #include <cstddef>
 #include <deque>
 
-// HUD diagnostics only. The clock counts unpaused playback, including map
-// breaks, independently of the audio estimator's corrected active clock.
+// HUD history on the shared counted-play clock. Retain up to 2048 entries so
+// expanding the selected duration can reveal older retained observations.
 class OsuTimingAudioRecentWindow
 {
 public:
@@ -21,40 +21,30 @@ public:
 	void reset()
 	{
 		m_entries.clear();
-		m_playSeconds = 0;
-		m_haveTime = m_playing = false;
+		m_lastDropped = std::numeric_limits<double>::quiet_NaN();
 	}
 
-	void advance(double nowSeconds, bool playing)
-	{
-		if (!std::isfinite(nowSeconds))
-		{
-			m_haveTime = m_playing = false;
-			return;
-		}
-		if (m_haveTime && m_playing && playing && nowSeconds >= m_lastSeconds)
-			m_playSeconds += nowSeconds - m_lastSeconds;
-		m_lastSeconds = nowSeconds;
-		m_haveTime = true;
-		m_playing = playing;
-		while (!m_entries.empty() && m_playSeconds - m_entries.front().at >= 5.0)
-			m_entries.pop_front();
-	}
-
-	void recordAcceptedHit(double errorMS)
+	void recordAcceptedHit(double playSeconds, double errorMS)
 	{
 		// Accepted pre-roll hits share the playback start timestamp.
-		if (!std::isfinite(errorMS)) return;
-		if (m_entries.size() == 2048) m_entries.pop_front();
-		m_entries.push_back({m_playSeconds, errorMS});
+		if (!std::isfinite(playSeconds) || !std::isfinite(errorMS)) return;
+		if (m_entries.size() == 2048)
+		{
+			m_lastDropped = m_entries.front().at;
+			m_entries.pop_front();
+		}
+		m_entries.push_back({playSeconds, errorMS});
 	}
 
-	Moments getMoments() const
+	bool truncated(double playSeconds, double duration) const { return playSeconds - m_lastDropped < duration; }
+
+	Moments getMoments(double playSeconds, double duration) const
 	{
 		Moments result;
 		double sumSquared = 0;
 		for (const Entry &entry : m_entries)
 		{
+			if (playSeconds - entry.at >= duration) continue;
 			const double delta = entry.errorMS - result.meanMS;
 			result.meanMS += delta / ++result.count;
 			sumSquared += delta * (entry.errorMS - result.meanMS);
@@ -63,18 +53,17 @@ public:
 		return result;
 	}
 
-	void apply(OsuTimingAudioEvaluation &evaluation, double speed) const
+	void apply(OsuTimingAudioEvaluation &evaluation, double speed, double playSeconds, double duration) const
 	{
 		if (evaluation.phase == OsuTimingAudioEvaluation::INVALID) return;
-		const auto moments = getMoments();
+		const auto moments = getMoments(playSeconds, duration);
 		evaluation.setStatistics(moments.count, moments.meanMS, moments.varianceMS2, speed);
 	}
 
 private:
 	struct Entry { double at, errorMS; };
 	std::deque<Entry> m_entries;
-	double m_lastSeconds = 0, m_playSeconds = 0;
-	bool m_haveTime = false, m_playing = false;
+	double m_lastDropped = std::numeric_limits<double>::quiet_NaN();
 };
 
 #endif

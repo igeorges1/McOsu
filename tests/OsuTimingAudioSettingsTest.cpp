@@ -12,7 +12,8 @@ static Settings::Values values()
 	for (const auto &spec : Settings::specs())
 	{
 		if (spec.type == Settings::FILENAME) result[spec.name] = "timing-early.wav";
-		else if (spec.type == Settings::BOOLEAN || spec.type == Settings::INTEGER) result[spec.name] = "0";
+		else if (spec.type == Settings::BOOLEAN) result[spec.name] = "0";
+		else if (spec.type == Settings::INTEGER) result[spec.name] = std::to_string((int)spec.min);
 		else result[spec.name] = std::to_string((double)spec.min);
 	}
 	result["osu_timing_audio_target"] = "0.8";
@@ -113,5 +114,29 @@ int main()
 	const std::string duplicate = text + "osu_timing_audio_muted 1\n";
 	CHECK(!Settings::decode(duplicate, decoded).empty() && decoded == profiles);
 	CHECK(decoded.at(u8"Myuzs 対策").at("osu_timing_audio_half_life_seconds") == "5.123456789012");
+	std::string legacy = "timing-audio-profiles 1\n[Older]\n";
+	for (const auto &spec : Settings::specs())
+		if (spec.legacyDefault == NULL) legacy += std::string(spec.name) + " " + good.at(spec.name) + "\n";
+	decoded["Older"] = good;
+	decoded["Older"]["osu_timing_audio_idle_forgiveness"] = "1";
+	decoded["Older"]["osu_timing_audio_adaptive_startup_maximum"] = "1";
+	decoded["Older"]["osu_timing_audio_retain_failed_cue"] = "0";
+	CHECK(Settings::decode(legacy, decoded).empty());
+	const auto &older = decoded.at("Older");
+	CHECK(older.at("osu_timing_audio_idle_forgiveness") == "0");
+	CHECK(older.at("osu_timing_audio_adaptive_startup_maximum") == "0");
+	CHECK(older.at("osu_timing_audio_retain_failed_cue") == "1");
+	CHECK(older.at("osu_timing_audio_startup_average_hits") == "8");
+	CHECK(older.at("osu_timing_audio_silent_startup_hits") == "8");
+	CHECK(older.at("osu_timing_audio_idle_grace_seconds") == "1");
+	CHECK(older.at("osu_timing_audio_idle_ramp_seconds") == "3");
+	CHECK(older.at("osu_timing_audio_idle_recovery_hits") == "4");
+	const auto beforeLegacy = decoded;
+	CHECK(!Settings::decode(legacy + "osu_hud_hiterrorbar_timing_audio 1\n", decoded).empty() && decoded == beforeLegacy);
+	const auto last = legacy.rfind('\n', legacy.size() - 2);
+	CHECK(!Settings::decode(legacy.substr(0, last + 1), decoded).empty() && decoded == beforeLegacy);
+	CHECK(Settings::retainOtherConfigStatements("osu_hud_hiterrorbar_timing_audio_recent_seconds 8 // my window") == "// my window");
+	CHECK(Settings::retainOtherConfigStatements("osu_draw_hiterrorbar_top 1; osu_folder_sub_songs Practice/")
+		== "osu_draw_hiterrorbar_top 1; osu_folder_sub_songs Practice/");
 	std::puts("PASS: complete timing settings validation, exact Unicode/decimal profile roundtrip, CRLF and atomic malformed-input rejection");
 }

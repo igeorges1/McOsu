@@ -1102,14 +1102,11 @@ OsuOptionsMenu::OsuOptionsMenu(Osu *osu) : OsuScreenBackable(osu)
 	addCheckbox("Draw Combo", convar->getConVarByName("osu_draw_combo"));
 	addCheckbox("Draw Accuracy", convar->getConVarByName("osu_draw_accuracy"));
 	addCheckbox("Draw ProgressBar", convar->getConVarByName("osu_draw_progressbar"));
-	addCheckbox("Draw HitErrorBar", convar->getConVarByName("osu_draw_hiterrorbar"));
-	addCheckbox("Draw HitErrorBar UR", "Unstable Rate", convar->getConVarByName("osu_draw_hiterrorbar_ur"));
 	addCheckbox("Draw ScoreBar", "Health/HP Bar.", convar->getConVarByName("osu_draw_scorebar"));
 	addCheckbox("Draw ScoreBar-bg", "Some skins abuse this as the playfield background image.\nIt is actually just the background image for the Health/HP Bar.", convar->getConVarByName("osu_draw_scorebarbg"));
 	addCheckbox("Draw ScoreBoard", convar->getConVarByName("osu_draw_scoreboard"));
 	addCheckbox("Draw Key Overlay", convar->getConVarByName("osu_draw_inputoverlay"));
 	addCheckbox("Draw Scrubbing Timeline", convar->getConVarByName("osu_draw_scrubbing_timeline"));
-	addCheckbox("Draw Miss Window on HitErrorBar", convar->getConVarByName("osu_hud_hiterrorbar_showmisswindow"));
 	addSpacer();
 	addCheckbox("Draw Stats: pp", "Realtime pp counter.\nDynamically calculates earned pp by incrementally updating the star rating.", convar->getConVarByName("osu_draw_statistics_pp"));
 	addCheckbox("Draw Stats: pp (SS)", "Max possible total pp for active mods (full combo + perfect acc).", convar->getConVarByName("osu_draw_statistics_perfectpp"));
@@ -1142,12 +1139,6 @@ OsuOptionsMenu::OsuOptionsMenu(Osu *osu) : OsuScreenBackable(osu)
 	m_hudAccuracyScaleSlider = addSlider("Accuracy Scale:", 0.01f, 3.0f, convar->getConVarByName("osu_hud_accuracy_scale"), 165.0f);
 	m_hudAccuracyScaleSlider->setChangeCallback( fastdelegate::MakeDelegate(this, &OsuOptionsMenu::onSliderChangePercent) );
 	m_hudAccuracyScaleSlider->setKeyDelta(0.01f);
-	m_hudHiterrorbarScaleSlider = addSlider("HitErrorBar Scale:", 0.01f, 3.0f, convar->getConVarByName("osu_hud_hiterrorbar_scale"), 165.0f);
-	m_hudHiterrorbarScaleSlider->setChangeCallback( fastdelegate::MakeDelegate(this, &OsuOptionsMenu::onSliderChangePercent) );
-	m_hudHiterrorbarScaleSlider->setKeyDelta(0.01f);
-	m_hudHiterrorbarURScaleSlider = addSlider("HitErrorBar UR Scale:", 0.01f, 3.0f, convar->getConVarByName("osu_hud_hiterrorbar_ur_scale"), 165.0f);
-	m_hudHiterrorbarURScaleSlider->setChangeCallback( fastdelegate::MakeDelegate(this, &OsuOptionsMenu::onSliderChangePercent) );
-	m_hudHiterrorbarURScaleSlider->setKeyDelta(0.01f);
 	m_hudProgressbarScaleSlider = addSlider("ProgressBar Scale:", 0.01f, 3.0f, convar->getConVarByName("osu_hud_progressbar_scale"), 165.0f);
 	m_hudProgressbarScaleSlider->setChangeCallback( fastdelegate::MakeDelegate(this, &OsuOptionsMenu::onSliderChangePercent) );
 	m_hudProgressbarScaleSlider->setKeyDelta(0.01f);
@@ -3116,6 +3107,16 @@ void OsuOptionsMenu::onCheckboxChange(CBaseUICheckbox *checkbox)
 
 void OsuOptionsMenu::onSliderChange(CBaseUISlider *slider)
 {
+	updateSliderValue(slider, 100.0f);
+}
+
+void OsuOptionsMenu::onTimingHudPreciseSlider(CBaseUISlider *slider)
+{
+	updateSliderValue(slider, 1000.0f);
+}
+
+void OsuOptionsMenu::updateSliderValue(CBaseUISlider *slider, float precision)
+{
 	for (int i=0; i<m_elements.size(); i++)
 	{
 		for (int e=0; e<m_elements[i].elements.size(); e++)
@@ -3123,7 +3124,7 @@ void OsuOptionsMenu::onSliderChange(CBaseUISlider *slider)
 			if (m_elements[i].elements[e] == slider)
 			{
 				if (m_elements[i].cvar != NULL)
-					m_elements[i].cvar->setValue(std::round(slider->getFloat()*100.0f)/100.0f); // round to 2 decimal places
+					m_elements[i].cvar->setValue(std::round(slider->getFloat()*precision)/precision);
 
 				if (m_elements[i].elements.size() == 3)
 				{
@@ -4227,6 +4228,10 @@ void OsuOptionsMenu::save()
 				{
 					if (m_elements[i].cvar != NULL && legacyMatches(m_elements[i].cvar))
 					{
+						// Managed standalone settings were already removed exactly above.
+						// Preserve any retained compound with a managed first command.
+						if (OsuTimingAudioSettings::isManagedConfigKey(m_elements[i].cvar->getName().toUtf8()))
+							continue;
 						// Keep the widget filter's first-command check for compounds too.
 						// A later widget assignment must not erase earlier user commands;
 						// its current value is written after the retained lines below.

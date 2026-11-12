@@ -85,7 +85,7 @@ public:
 
 	// music/sound
 	void reloadTimingAudioSounds();
-	OsuTimingAudioView getTimingAudioView(OsuTimingAudioView::Mode mode) const;
+	OsuTimingAudioView getTimingAudioView(OsuTimingAudioView::Mode mode, double recentSeconds = 5, bool includeCueStatus = false) const;
 	void unloadMusic() {unloadMusicInt();}
 	void setVolume(float volume);
 	void setSpeed(float speed);
