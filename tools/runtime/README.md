@@ -1,5 +1,9 @@
 # Reusable Windows builds and runtimes
 
+For queued preview updates, see the [lifecycle, command reference and migration
+recipe](QUEUED-PREVIEW.md). A managed preview can stage a verified package while
+the game runs and promote it at a launcher boundary.
+
 Python 3.13+, Git, and GCC **8.1.0 i686 / Win32 threads / DWARF2** are required.
 These tools do not change gameplay. They do not choose channels or install into
 Steam. Every build, package and runtime destination is an explicit caller input.
@@ -99,8 +103,9 @@ therefore separates them **by file ownership** inside that flat layout:
   `version.txt` is writable game state (`OsuMainMenu::writeVersionFile`), so it is
   deliberately excluded from immutable payloads.
 - Private metadata: `.mcosu-runtime/` stores the ownership marker, exclusive
-  lock, current and one previous immutable bundle, and a transaction journal.
-  Do not edit this directory. Completed operations retain at most two bundles.
+  locks, the current and previous immutable bundles, queue/pin references,
+  and a transaction journal. Do not edit this directory. Each distinct pending
+  and pinned bundle adds at most one retained image; identical IDs share storage.
 
 Updates validate the entire package before writes; refuse unmanaged destinations,
 active images, modified managed files, unowned-file conflicts, links/junctions,
@@ -128,8 +133,8 @@ The acknowledgement makes that risk explicit; the tools neither migrate nor
 silently revert scores or preferences. The same caution applies to any update
 whose game revision changes a data format.
 
-Use a local Windows filesystem and enough free space for staging plus two
-bundles. This is a single-user, cooperative CLI, not a security boundary against
+Use a local Windows filesystem and enough free space for staging, up to four
+retained bundles, and the saved-state backup. This is a single-user CLI, not a security boundary against
 concurrent manual file edits or a service enforcing immutable permissions.
 Do not manually launch or edit a runtime during deployment. Windows image
 enumeration plus image write checks protect externally started executables;

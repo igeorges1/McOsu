@@ -3,6 +3,7 @@ import argparse
 from contextlib import contextmanager, suppress
 import ctypes
 from ctypes import wintypes
+from datetime import datetime, timezone
 import hashlib
 import json
 import os
@@ -12,6 +13,8 @@ import shutil
 import stat
 import subprocess
 import sys
+import uuid
+import zipfile
 
 
 ENGINE_PIN = "f2f5721409c17ce4decc20eaf2a1827ce9aafd87"
@@ -21,7 +24,14 @@ DLLS = ("bass.dll", "bass_fx.dll", "glew32.dll", "libgcc_s_dw2-1.dll",
 PERSISTENT = ("cfg", "scores.db", "scoresvr.db", "collections.db", "stars.cache",
               "screenshots", "version.txt")
 CONTROL = ".mcosu-runtime"
-KIND = "mcosu-flat-runtime-v1"
+LEGACY_KIND = "mcosu-flat-runtime-v1"
+KIND = "mcosu-flat-runtime-v2"
+TOOLING_VERSION = "queued-preview-v1"
+QUEUE_FORMAT = 1
+BACKUP_NAME = "last-saved-state.zip"
+EXIT_HOLD = "exit-hold.json"
+BACKUP_LIMIT = 512 * 1024 * 1024
+BACKUP_PATHS = tuple(p for p in PERSISTENT if p != "screenshots")
 
 
 class Refusal(RuntimeError):
@@ -65,7 +75,8 @@ def read_json(path):
 
 def write_json(path, data):
     # Metadata switches are atomic. Payload writes use the same-volume staging area.
-    temporary = path.with_name(path.name + ".tmp")
+    no_links(path)
+    temporary = no_links(path.with_name(path.name + ".tmp"))
     with temporary.open("w", encoding="utf-8", newline="\n") as f:
         json.dump(data, f, sort_keys=True, indent=2)
         f.write("\n")
@@ -82,11 +93,13 @@ def no_links(path):
     return path
 
 
-def files(root):
+def files(root, skip_control=False):
     no_links(root)
     require(root.is_dir(), "Missing directory: " + str(root))
     result = {}
     for base, dirs, names in os.walk(root):
+        if skip_control and Path(base) == root and CONTROL in dirs:
+            dirs.remove(CONTROL)
         for name in dirs + names:
             no_links(Path(base) / name)
         for name in names:
@@ -100,7 +113,7 @@ def allowed(name):
     # Windows aliases, ADS, traversal, case collisions and reserved names are rejected.
     parts = name.split("/")
     if any(not re.fullmatch(r"[A-Za-z0-9_ .+()@!%&=,;\[\]{}~-]+", p)
-           or p in (".", "..") or p.endswith((".", " "))
+           or p in (".", "..") or p.endswith((".", " ")) or re.search(r"~[0-9]", p)
            or re.fullmatch(r"(?i)(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?", p)
            for p in parts):
         return False
@@ -192,21 +205,23 @@ def active_processes(root):
 def idle(root):
     require(not active_processes(root), "Runtime has an active executable; close it yourself")
     # Opening images for write is refused by Windows even when a process path is inaccessible.
-    for name in files(root):
-        if name.lower().endswith((".exe", ".dll")) and not name.startswith(CONTROL + "/"):
+    for path in files(root, skip_control=True).values():
+        if path.suffix.lower() in (".exe", ".dll"):
             try:
-                with (root / name).open("r+b"):
+                with no_links(path).open("r+b"):
                     pass
             except OSError as error:
-                raise Refusal("Runtime image is busy/read-only: " + name) from error
+                raise Refusal("Runtime image is busy/read-only: " + path.name) from error
 
 
-def managed(root):
+def managed(root, scan=False):
     root = no_links(root)
-    require((root / CONTROL / "state.json").is_file(), "Unmanaged destination; initialize an empty directory first")
-    files(root / CONTROL)
-    state = read_json(root / CONTROL / "state.json")
-    require(set(state) == {"kind", "current", "previous"} and state["kind"] == KIND,
+    marker = no_links(root / CONTROL / "state.json")
+    require(marker.is_file(), "Unmanaged destination; initialize an empty directory first")
+    if scan:
+        files(root / CONTROL)
+    state = read_json(marker)
+    require(set(state) == {"kind", "current", "previous"} and state["kind"] in (LEGACY_KIND, KIND),
             "Invalid managed runtime marker")
     for key in ("current", "previous"):
         require(state[key] is None or re.fullmatch(r"[0-9a-f]{64}", state[key]), "Invalid bundle pointer")
@@ -214,20 +229,32 @@ def managed(root):
 
 
 @contextmanager
-def locked(root):
+def runtime_lock(root, byte, message):
     import msvcrt
     lock = no_links(root / CONTROL / "lock")
     with lock.open("r+b") as f:
+        f.seek(byte)
         try:
             msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
         except OSError as error:
-            raise Refusal("Runtime is locked by another operation/launch") from error
+            raise Refusal(message) from error
         try:
-            idle(root)
             yield
         finally:
-            f.seek(0)
+            f.seek(byte)
             msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
+
+
+@contextmanager
+def locked(root):
+    with runtime_lock(root, 0, "Runtime is locked by another operation/launch"):
+        idle(root)
+        yield
+
+
+def queue_lock(root):
+    # Windows permits locking past EOF: legacy runtimes already have this file.
+    return runtime_lock(root, 1, "Queue is busy; retry this command when the current operation finishes")
 
 
 def bundle(root, package_id):
@@ -295,31 +322,96 @@ def discard_private_tree(path):
 
 def collect(root, state):
     keep = {state["current"], state["previous"]}
-    for p in (root / CONTROL / "bundles").iterdir():
-        require(p.is_dir() and re.fullmatch(r"[0-9a-f]{64}", p.name), "Unexpected bundle entry")
-        if p.name not in keep:
-            discard_private_tree(p)
+    q = read_queue(root)
+    keep.add(q["known_good"])
+    if q["pending"]:
+        keep.add(q["pending"]["id"])
+    if has_transaction(root):
+        return  # The journal can still need any pre-transaction bundle.
+    active = None
+    for p in no_links(root / CONTROL / "bundles").iterdir():
+        if p.name in keep or not hex_string(p.name, 64):
+            continue
+        try:
+            if active is None:
+                active = [Path(item["image"]) for item in active_processes(root)]
+            if any(image.is_relative_to(p.resolve()) for image in active):
+                continue
+            manifest = validate(bundle(root, p.name))  # Never delete unverifiable contents.
+            directories = {Path("payload") / parent for name in manifest["files"] for parent in Path(name).parents}
+            require(all(Path(base, name).relative_to(p) in directories
+                        for base, dirs, _ in os.walk(p) for name in dirs), "Unknown directory in bundle")
+            discard_private_tree(no_links(p))
+        except (Refusal, OSError, ValueError, TypeError, KeyError) as error:
+            print(f"Retained private entry {p.name}: {error}", file=sys.stderr)
+
+
+def require_legacy_safe_store(root, state):
+    # The legacy controller deletes every unreferenced hash-named directory,
+    # even on a no-op update, and discards a prior stage without validation.
+    control = root / CONTROL
+    require(not no_links(control / "stage").exists(),
+            "Private stage remains; inspect and preserve it outside the runtime before downgrade")
+    keep = {id for id in (state["current"], state["previous"]) if id is not None}
+    for p in no_links(control / "bundles").iterdir():
+        require(p.name in keep,
+                "Uncollected bundle entry blocks legacy downgrade; inspect and preserve it outside the runtime: " + p.name)
+    for id in keep:
+        bundle(root, id)
 
 
 def recover_locked(root):
     journal = root / CONTROL / "transaction.json"
     require(journal.is_file(), "No interrupted transaction")
     tx = read_json(journal)
-    require(set(tx) == {"before", "after"}, "Invalid transaction journal")
+    require(set(tx) in ({"before", "after"}, {"before", "after", "files"}), "Invalid transaction journal")
     before = tx["before"]
-    require(before.get("kind") == KIND and set(before) == {"kind", "current", "previous"}, "Invalid recovery state")
-    for value in (before["current"], before["previous"], tx["after"]):
+    require(before.get("kind") in (LEGACY_KIND, KIND) and set(before) == {"kind", "current", "previous"}, "Invalid recovery state")
+    for value in (before["current"], before["previous"]):
         require(value is None or re.fullmatch(r"[0-9a-f]{64}", value), "Invalid recovery pointer")
         if value:
             bundle(root, value)
-    after = validate(bundle(root, tx["after"]))
+    require(hex_string(tx["after"], 64), "Invalid recovery candidate")
+    names = tx.get("files")
+    if names is None:  # Older journals lack a removal inventory.
+        names = list(validate(bundle(root, tx["after"]))["files"])
+    require(isinstance(names, list) and all(isinstance(n, str) and allowed(n) for n in names),
+            "Invalid recovery inventory")
     target = bundle(root, before["current"]) if before["current"] else None
-    install_files(root, target, after["files"])
+    install_files(root, target, names)
     (root / CONTROL / "replace.tmp").unlink(missing_ok=True)
     write_json(root / CONTROL / "state.json", before)
     journal.unlink()
     collect(root, before)
     return before
+
+
+def store_bundle(root, package, after):
+    control = root / CONTROL
+    destination = no_links(control / "bundles" / after["id"])
+    # Stage fully before publishing the journal. Leftover staging is safe to discard.
+    stage = no_links(control / "stage")
+    if stage.exists():
+        # The fixed stage is private; refuse unknown contents even after a crash.
+        require(all(n in ("manifest.json", "manifest.json.tmp") or (n.startswith("payload/") and allowed(n[8:]))
+                    for n in files(stage)), "Unknown file in private stage; inspect it before retrying")
+        require(all((p := Path(base, name).relative_to(stage)).as_posix() == "payload"
+                    or (p.parts[0] == "payload" and allowed("/".join(p.parts[1:]) + "/leaf"))
+                    for base, dirs, _ in os.walk(stage) for name in dirs), "Unknown directory in private stage")
+        discard_private_tree(stage)
+    if destination.exists():
+        require(validate(destination) == after, "Stored bundle differs")
+    else:
+        # Copy only validated leaves, without inheriting read-only flags.
+        stage.mkdir()
+        for name in after["files"]:
+            p = stage / "payload" / name
+            p.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(no_links(Path(package) / "payload" / name), p)
+        write_json(stage / "manifest.json", after)
+        require(validate(stage) == after, "Package changed during staging")
+        os.replace(stage, destination)
+    return destination
 
 
 def transact(root, state, package):
@@ -331,25 +423,12 @@ def transact(root, state, package):
     if after["id"] == state["current"]:
         collect(root, state)  # Also finish any interrupted post-commit garbage collection.
         return state
-    destination = control / "bundles" / after["id"]
-    # Stage fully before publishing the journal. Leftover staging is safe to discard.
-    stage = control / "stage"
-    if stage.exists():
-        discard_private_tree(stage)
-    # Bundle ownership is defined by bytes, not source file attributes. Keep
-    # private copies removable even when the supplied package is read-only.
-    shutil.copytree(package, stage, copy_function=shutil.copyfile)
-    require(validate(stage) == after, "Package changed during staging")
-    if destination.exists():
-        require(validate(destination) == after, "Stored bundle differs")
-        discard_private_tree(stage)
-    else:
-        os.replace(stage, destination)
-    write_json(control / "transaction.json", {"before": state, "after": after["id"]})
+    destination = store_bundle(root, package, after)
+    write_json(control / "transaction.json", {"before": state, "after": after["id"], "files": sorted(after["files"])})
     try:
         install_files(root, destination, before["files"])
         verify_live(root, after)
-        new = {"kind": KIND, "current": after["id"], "previous": state["current"]}
+        new = {"kind": state["kind"], "current": after["id"], "previous": state["current"]}
         write_json(control / "state.json", new)
     except Exception as error:
         try:
@@ -408,56 +487,340 @@ def initialize(root, import_from=None, dry_run=False):
     return plan
 
 
-def operate(action, runtime, package=None, dry_run=False, acknowledge_state_risk=False, arguments=()):
+def stamp():
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def has_transaction(root):
+    return no_links(root / CONTROL / "transaction.json").exists()
+
+
+def read_queue(root):
+    p = no_links(root / CONTROL / "queue.json")
+    if not p.exists():
+        return {"format": QUEUE_FORMAT, "pending": None, "known_good": None, "last": None}
+    q = read_json(p)
+    require(set(q) == {"format", "pending", "known_good", "last"} and q["format"] == QUEUE_FORMAT,
+            "Invalid queue format")
+    require(q["known_good"] is None or hex_string(q["known_good"], 64), "Invalid known-good ID")
+    p = q["pending"]
+    require(p is None or (isinstance(p, dict) and hex_string(p.get("id"), 64)
+                          and hex_string(p.get("source"), 40) and hex_string(p.get("exe_sha256"), 64)
+                          and hex_string(p.get("stage_token"), 32)
+                          and p.get("phase") in ("queued", "applying", "held")), "Invalid pending release")
+    return q
+
+
+def write_queue(root, q):
+    write_json(root / CONTROL / "queue.json", q)
+
+
+def release_identity(manifest):
+    return {"id": manifest["id"], "source": manifest["build"]["source"],
+            "exe_sha256": manifest["files"]["McOsu.exe"]["sha256"]}
+
+
+def outcome(q, result, reason, detail=None):
+    p = q["pending"]
+    q["last"] = {"result": result, "reason": reason, "time_utc": stamp(),
+                 "candidate": p.copy() if p else None, "detail": detail}
+
+
+def reconcile(root, state, q, save):
+    p = q["pending"]
+    changed = False
+    if p and p["phase"] == "applying":
+        if not has_transaction(root) and state["current"] == p["id"]:
+            outcome(q, "promoted", "reconciled committed attempt")
+            q["pending"] = None
+        else:
+            p["phase"] = "held"
+            outcome(q, "interrupted", "promotion", "Inspect recovery state; then retry or cancel explicitly")
+        changed = True
+    receipt = no_links(root / CONTROL / EXIT_HOLD)
+    held = read_json(receipt) if receipt.exists() else None
+    if held is not None:
+        p = q["pending"]
+        if p and p["phase"] == "queued" and p["stage_token"] == held["stage_token"]:
+            p["phase"] = "held"
+            outcome(q, "held", "nonzero game exit", str(held["exit_code"]))
+            q["last"]["time_utc"] = held["time_utc"]
+            changed = True
+    if save:
+        if changed:
+            write_queue(root, q)
+        if held is not None:
+            receipt.unlink()
+    return q
+
+
+def saved_backup(root, state, candidate):
+    inventory = {}
+    for name in BACKUP_PATHS:
+        p = no_links(root / name)
+        if name == "cfg" and p.is_dir():
+            inventory.update({"cfg/" + n: f for n, f in files(p).items()})
+        elif p.exists():
+            require(p.is_file(), "Invalid saved-state file: " + name)
+            inventory[name] = p
+    require(sum(p.stat().st_size for p in inventory.values()) <= BACKUP_LIMIT,
+            "Saved state exceeds the backup size limit; no promotion performed")
+    path = no_links(root / CONTROL / BACKUP_NAME)
+    temporary = no_links(path.with_suffix(".tmp"))
+    result = {"created_utc": stamp(), "installed_before": state["current"], "candidate": candidate,
+              "files": {n: digest(p) for n, p in sorted(inventory.items())}}
+    with temporary.open("wb") as f:
+        with zipfile.ZipFile(f, "w", compression=zipfile.ZIP_DEFLATED) as z:
+            for n, p in sorted(inventory.items()):
+                z.write(p, "state/" + n)
+            z.writestr("backup.json", canonical(result))
+        f.flush()
+        os.fsync(f.fileno())
+    with zipfile.ZipFile(temporary) as z:
+        for name, sha in result["files"].items():
+            with z.open("state/" + name) as f:
+                require(hashlib.file_digest(f, "sha256").hexdigest() == sha and digest(inventory[name]) == sha,
+                        "Saved state changed while making backup: " + name)
+    os.replace(temporary, path)
+    return result
+
+
+def promote(root, state, q, reason):
+    """Caller owns install and queue locks; a zero game exit is only a timing edge."""
+    p = q["pending"]
+    if not p or p["phase"] != "queued":
+        return None
+    if p["id"] == state["current"]:
+        outcome(q, "already-installed", reason)
+        q["pending"] = None
+        write_queue(root, q)
+        return q["last"]
+    p["phase"] = "applying"
+    outcome(q, "applying", reason)
+    write_queue(root, q)
+    try:
+        package = bundle(root, p["id"])
+        after = validate(package)
+        require(all(p[k] == v for k, v in release_identity(after).items()), "Queued provenance differs")
+        before = current_manifest(root, state)
+        verify_live(root, before)
+        check_plan(root, before, after)
+        idle(root)
+        saved_backup(root, state, p["id"])
+        idle(root)
+        state = transact(root, state, package)
+    except (Refusal, OSError, ValueError, TypeError, KeyError, zipfile.BadZipFile) as error:
+        p["phase"] = "held"
+        outcome(q, "failed", reason, str(error))
+        write_queue(root, q)
+        return q["last"]
+    outcome(q, "promoted", reason)
+    q["pending"] = None
+    write_queue(root, q)
+    collect(root, state)
+    return q["last"]
+
+
+def status(root, state, q):
+    def describe(id):
+        if id is None:
+            return None
+        try:
+            return release_identity(validate(bundle(root, id)))
+        except (Refusal, OSError, ValueError, TypeError, KeyError) as error:
+            return {"id": id, "error": str(error)}
+
+    path = no_links(root / CONTROL / BACKUP_NAME)
+    backup = None
+    if path.exists():
+        try:
+            with zipfile.ZipFile(path) as z:
+                backup = json.loads(z.read("backup.json"))
+            backup = {k: v for k, v in backup.items() if k != "files"} | {"path": str(path)}
+        except (ValueError, OSError, KeyError, zipfile.BadZipFile) as error:
+            backup = {"path": str(path), "error": str(error)}
+    recovery = has_transaction(root)
+    installed = describe(state["current"])
+    if installed and not recovery and "error" not in installed:
+        try:
+            verify_live(root, current_manifest(root, state))
+        except (Refusal, OSError) as error:
+            installed["error"] = str(error)
+    if installed:
+        installed["verified_live"] = not recovery and "error" not in installed
+    queued = q["pending"]
+    if queued:
+        queued = queued | {"stored_bundle": describe(queued["id"])}
+    return {"tooling": TOOLING_VERSION, "queue_enabled": state["kind"] == KIND,
+            "runtime": str(root), "installed": installed, "previous": describe(state["previous"]),
+            "known_good": describe(q["known_good"]), "queued": queued, "last": q["last"],
+            "outcome_log": str(root / CONTROL / "queue.json"), "backup": backup,
+            "recovery_required": recovery, "active_images": active_processes(root),
+            "policy": {"promote": ["before-launch", "after-zero-exit"], "failed": "explicit-retry",
+                       "backup_count": 1, "backup_max_bytes": BACKUP_LIMIT, "backup_paths": BACKUP_PATHS}}
+
+
+def queue_action(action, root, package, incoming, replace):
+    with queue_lock(root):
+        root, state = managed(root)
+        q = reconcile(root, state, read_queue(root), save=action != "status")
+        if action == "status":
+            return status(root, state, q)
+        require(state["kind"] == KIND, "Enable the queue with the new controller while idle first")
+        require(not has_transaction(root), "Interrupted transaction; recover before changing the queue")
+        if action == "stage":
+            require(incoming is not None, "Stage requires --package")
+            if incoming["id"] == state["current"]:
+                return {"result": "already-installed", "id": incoming["id"], "queued": q["pending"]}
+            p = q["pending"]
+            if p and p["id"] == incoming["id"]:
+                # Refill a missing copy without resetting a failure/hold.
+                if no_links(root / CONTROL / "bundles" / p["id"]).exists():
+                    bundle(root, p["id"])
+                else:
+                    store_bundle(root, package, incoming)
+                return {"result": "already-queued", "queued": p}
+            require(not p or replace, "A release is queued; pass --replace or cancel it explicitly")
+            store_bundle(root, package, incoming)
+            q["pending"] = release_identity(incoming) | {"phase": "queued", "staged_utc": stamp(),
+                                                         "origin": str(no_links(package)),
+                                                         "stage_token": uuid.uuid4().hex}
+            outcome(q, "staged", "explicit replacement" if p else "stage")
+        else:
+            if not q["pending"]:
+                return {"result": "nothing-queued"}
+            outcome(q, "cancelled", "cancel")
+            q["pending"] = None
+        write_queue(root, q)
+        collect(root, state)
+        return {"result": q["last"]["result"], "queued": q["pending"]}
+
+
+def game_launch(root, arguments, defer):
+    command = [str(root / "McOsu.exe"), *arguments]
+    with queue_lock(root):
+        _, state = managed(root)
+        q = reconcile(root, state, read_queue(root), save=True)
+        require(not has_transaction(root), "Interrupted transaction; run recover before launch")
+        result = None if defer else promote(root, state, q, "before-launch")
+        if result and result["result"] == "failed":
+            print(f"Queued promotion held: {result['detail']}", file=sys.stderr)
+        require(not has_transaction(root), "Interrupted transaction; run recover before launch")
+        _, state = managed(root)
+        require(state["current"], "No package deployed")
+        verify_live(root, current_manifest(root, state))
+        idle(root)
+        child = subprocess.Popen(command, cwd=root, creationflags=subprocess.CREATE_NEW_PROCESS_GROUP)
+    with child:
+        while True:
+            try:
+                code = child.wait()
+                break
+            except KeyboardInterrupt:
+                continue
+    after = None
+    if not defer:
+        try:
+            if code != 0:
+                # queue.json is atomic. The install lock keeps launchers from
+                # overlapping, so the exit receipt has its own single writer.
+                # A concurrent replacement gets a fresh token and is not held.
+                pending = read_queue(root)["pending"]
+                if pending and pending["phase"] == "queued":
+                    write_json(root / CONTROL / EXIT_HOLD, {"stage_token": pending["stage_token"],
+                               "exit_code": code, "time_utc": stamp()})
+                    after = {"result": "held", "reason": "nonzero game exit", "candidate": pending}
+            with queue_lock(root):
+                _, state = managed(root)
+                q = reconcile(root, state, read_queue(root), save=True)
+                if code == 0:
+                    after = promote(root, state, q, "after-zero-exit")
+        except (Refusal, OSError, ValueError, TypeError, KeyError) as error:
+            # Do not replace the game's actual exit code with an updater error.
+            after = (after or {"result": "not-promoted"}) | {"detail": str(error)}
+            print(f"Post-exit queue: {error}", file=sys.stderr)
+    return {"exit_code": code, "before_launch": result, "after_exit": after}
+
+
+def operate(action, runtime, package=None, dry_run=False, acknowledge_state_risk=False, arguments=(),
+            replace=False, to="previous", defer_queue=False):
     # Invalid packages and unmanaged/running destinations fail before any writes.
     incoming = validate(Path(package)) if package else None
-    root, initial = managed(runtime)
+    root, _ = managed(runtime)
     if package:
         package_path = no_links(package)
         require(not package_path.is_relative_to(root) and not root.is_relative_to(package_path),
                 "Update package and runtime must not overlap")
+    if action in ("stage", "status", "cancel"):
+        return queue_action(action, root, package, incoming, replace)
     idle(root)
     with locked(root):
-        root, state = managed(root)
-        pending = (root / CONTROL / "transaction.json").exists()
-        if action == "inspect":
-            if not pending:
-                verify_live(root, current_manifest(root, state))
-            return {**state, "runtime": str(root), "recovery_required": pending}
-        if action == "recover":
-            require(pending, "No interrupted transaction")
-            return {"recovery_required": True} if dry_run else recover_locked(root)
-        require(not pending, "Interrupted transaction; run recover before update/rollback/launch")
-        if action == "launch":
-            require(state["current"], "No package deployed")
-            manifest = current_manifest(root, state)
-            verify_live(root, manifest)
-            command = [str(root / "McOsu.exe"), *arguments]
-            if dry_run:
-                return {"command": command, "cwd": str(root)}
-            # Keep the runtime lock for the entire child lifetime. KeyboardInterrupt doesn't kill it.
-            with subprocess.Popen(command, cwd=root, creationflags=subprocess.CREATE_NEW_PROCESS_GROUP) as child:
-                while True:
-                    try:
-                        return {"exit_code": child.wait()}
-                    except KeyboardInterrupt:
-                        continue
-        if action == "rollback":
-            require(state["previous"], "No previous bundle retained")
-            require(acknowledge_state_risk or dry_run,
-                    "Rollback keeps current preferences/scores/cache. Compatibility is unverified; "
-                    "back up state and pass --acknowledge-state-risk")
-            package = bundle(root, state["previous"])
-            incoming = validate(package)
-        require(incoming is not None, "Update requires --package")
-        before = current_manifest(root, state)
-        verify_live(root, before)
-        check_plan(root, before, incoming)
-        plan = {"from": state["current"], "to": incoming["id"], "files": len(incoming["files"]),
-                "persistent_state": "unchanged; cross-build compatibility unverified", "dry_run": dry_run}
-        if not dry_run:
-            transact(root, state, Path(package))
-        return plan
+        if action == "launch" and not dry_run:
+            return game_launch(root, arguments, defer_queue)
+        with queue_lock(root):
+            return operate_idle(action, root, package, incoming, dry_run, acknowledge_state_risk, arguments, to)
+
+
+def operate_idle(action, root, package, incoming, dry_run, acknowledge_state_risk, arguments, to):
+    root, state = managed(root, scan=True)
+    pending = has_transaction(root)
+    q = reconcile(root, state, read_queue(root), save=not dry_run and action != "inspect")
+    if action == "inspect":
+        if not pending:
+            verify_live(root, current_manifest(root, state))
+        return {**state, "runtime": str(root), "recovery_required": pending}
+    if action == "recover":
+        require(pending, "No interrupted transaction")
+        return {"recovery_required": True} if dry_run else recover_locked(root)
+    require(not pending, "Interrupted transaction; run recover before update/rollback/launch")
+    if action in ("enable-queue", "disable-queue"):
+        kind = KIND if action == "enable-queue" else LEGACY_KIND
+        if kind == LEGACY_KIND:
+            require(not q["pending"] and not q["known_good"], "Cancel the queue and unpin before downgrade")
+            collect(root, state)
+            require_legacy_safe_store(root, state)
+        state["kind"] = kind
+        write_json(root / CONTROL / "state.json", state)
+        return {"queue_enabled": kind == KIND}
+    if action in ("retry", "pin", "unpin"):
+        require(state["kind"] == KIND, "Enable the queue while idle first")
+        if action == "retry":
+            require(q["pending"], "No candidate to retry")
+            q["pending"]["phase"] = "queued"
+            result = promote(root, state, q, "explicit-retry")
+            return result | {"exit_code": int(result["result"] == "failed")}
+        if action == "pin":
+            require(state["current"], "No installed package to pin")
+            verify_live(root, current_manifest(root, state))
+        q["known_good"] = state["current"] if action == "pin" else None
+        write_queue(root, q)
+        collect(root, state)
+        return {"known_good": q["known_good"]}
+    if action == "launch":
+        require(state["current"], "No package deployed")
+        manifest = current_manifest(root, state)
+        verify_live(root, manifest)
+        command = [str(root / "McOsu.exe"), *arguments]
+        return {"command": command, "cwd": str(root), "queued": q["pending"]}
+    if action == "rollback":
+        selected = state["previous"] if to == "previous" else q["known_good"]
+        require(selected, "No " + to + " bundle retained")
+        require(acknowledge_state_risk or dry_run,
+                "Rollback keeps current preferences/scores/cache. Compatibility is unverified; "
+                "back up state and pass --acknowledge-state-risk")
+        package = bundle(root, selected)
+        incoming = validate(package)
+    require(incoming is not None, "Update requires --package")
+    require(not q["pending"] or (action == "update" and incoming["id"] == state["current"]),
+            "Cancel the queued release before direct update or rollback")
+    before = current_manifest(root, state)
+    verify_live(root, before)
+    check_plan(root, before, incoming)
+    plan = {"from": state["current"], "to": incoming["id"], "files": len(incoming["files"]),
+            "persistent_state": "unchanged; cross-build compatibility unverified", "dry_run": dry_run}
+    if not dry_run:
+        transact(root, state, Path(package))
+    return plan
 
 
 def main():
@@ -469,15 +832,21 @@ def main():
     p.add_argument("--runtime", required=True, type=Path)
     p.add_argument("--import-from", type=Path)
     p.add_argument("--dry-run", action="store_true")
-    for action in ("inspect", "update", "rollback", "launch", "recover"):
+    for action in ("inspect", "update", "rollback", "launch", "recover", "stage", "status", "cancel",
+                   "retry", "pin", "unpin", "enable-queue", "disable-queue"):
         p = sub.add_parser(action)
         p.add_argument("--runtime", required=True, type=Path)
-        p.add_argument("--dry-run", action="store_true")
-        if action == "update":
+        if action in ("inspect", "update", "rollback", "launch", "recover"):
+            p.add_argument("--dry-run", action="store_true")
+        if action in ("update", "stage"):
             p.add_argument("--package", required=True, type=Path)
+        if action == "stage":
+            p.add_argument("--replace", action="store_true")
         if action == "rollback":
             p.add_argument("--acknowledge-state-risk", action="store_true")
+            p.add_argument("--to", choices=("previous", "known-good"), default="previous")
         if action == "launch":
+            p.add_argument("--defer-queue", action="store_true")
             p.add_argument("arguments", nargs=argparse.REMAINDER, help="Optional game arguments after --")
     args = vars(parser.parse_args())
     action = args.pop("action")
