@@ -346,6 +346,20 @@ def collect(root, state):
             print(f"Retained private entry {p.name}: {error}", file=sys.stderr)
 
 
+def require_legacy_safe_store(root, state):
+    # The legacy controller deletes every unreferenced hash-named directory,
+    # even on a no-op update, and discards a prior stage without validation.
+    control = root / CONTROL
+    require(not no_links(control / "stage").exists(),
+            "Private stage remains; inspect and preserve it outside the runtime before downgrade")
+    keep = {id for id in (state["current"], state["previous"]) if id is not None}
+    for p in no_links(control / "bundles").iterdir():
+        require(p.name in keep,
+                "Uncollected bundle entry blocks legacy downgrade; inspect and preserve it outside the runtime: " + p.name)
+    for id in keep:
+        bundle(root, id)
+
+
 def recover_locked(root):
     journal = root / CONTROL / "transaction.json"
     require(journal.is_file(), "No interrupted transaction")
@@ -764,6 +778,7 @@ def operate_idle(action, root, package, incoming, dry_run, acknowledge_state_ris
         if kind == LEGACY_KIND:
             require(not q["pending"] and not q["known_good"], "Cancel the queue and unpin before downgrade")
             collect(root, state)
+            require_legacy_safe_store(root, state)
         state["kind"] = kind
         write_json(root / CONTROL / "state.json", state)
         return {"queue_enabled": kind == KIND}

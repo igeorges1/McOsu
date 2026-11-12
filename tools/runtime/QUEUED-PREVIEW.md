@@ -27,7 +27,7 @@ in an installed preview, or `python tools/runtime/runtime.py ...` from source.
 | `retry` / `cancel` | Explicit idle retry (revalidates and takes a new backup) / discard pending intent. Cancellation can run during play. Interrupted install journals require `recover` first. |
 | `pin` / `unpin` | Explicitly mark the verified installed bundle as known-good, or remove the pin, while idle. A zero exit never marks acceptance. |
 | `rollback --to previous\|known-good --acknowledge-state-risk` | Switch immutable bundles while idle. Cancel any pending release first. Current preferences, scores and cache stay in place. |
-| `enable-queue` / `disable-queue` | Idle schema migration or downgrade; downgrade requires a clear journal, no pending release and no pin. Existing writable data stays in place. |
+| `enable-queue` / `disable-queue` | Idle schema migration or downgrade; downgrade requires a clear journal, no pending release or pin, and a store safe for the legacy controller. Existing writable data stays in place. |
 | `update --package <directory>` | Existing immediate idle path. Cancel any pending release before changing bundles. The queued promotion backup policy does not apply to an immediate update. |
 | `inspect` / `recover` | Existing idle inspection / restore pre-transaction assets and pointers. Recovery never restores saved data or rearms a failed candidate. |
 
@@ -69,9 +69,11 @@ entry point is [Launch-preview.cmd](Launch-preview.cmd).
   one pending ID; equal IDs share the same bundle. No pruning with a journal
   present. Cleanup only removes unreferenced, validated package trees; keep
   active images and unknown or unverifiable entries for operator inspection.
-- `status`, `managed`: state and package manifests give live identity. A legacy
+- `status`, `managed`, `require_legacy_safe_store`: state and package manifests give live identity. A legacy
   controller refuses a v2 marker before it can prune queue/pin references. After
-  migration use only the new controller for this runtime.
+  migration use only the new controller for this runtime. Downgrade keeps v2 if
+  private staging or an uncollected bundle entry remains: the old writer could
+  otherwise delete those bytes on a later update, including an unchanged one.
 
 Rollback does not restore the ZIP. If you deliberately need old saved data,
 close the game, keep a separate copy of your current state, extract the ZIP to
@@ -107,7 +109,10 @@ launcher from the **same** reviewed source revision. The launcher config file
    `status`. Do not stage a release merely to test migration.
 
 To revert only the controller: close the game, inspect/recover any journal,
-cancel the queue and unpin explicitly if present, then `disable-queue`. Restore
-the prior launcher and controller files. Keep the static identity pointer or
+cancel the queue and unpin explicitly if present, then `disable-queue`. If it
+refuses because staging or uncollected entries remain, keep the new controller
+in place. Inspect and preserve the named entries outside the runtime before
+trying again. Restore the prior launcher and controller files only after
+`disable-queue` succeeds. Keep the static identity pointer or
 make a new receipt from verified installed state; never reinstate an old receipt
 as current after an actual game update. Keep backups until reviewed separately.

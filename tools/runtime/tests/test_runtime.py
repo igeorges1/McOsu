@@ -666,6 +666,25 @@ r.operate("retry", Path(sys.argv[2]))
         self.assertEqual(r.read_json(self.root / r.CONTROL / "state.json"), state)
         self.preserved()
 
+    def test_downgrade_refuses_to_expose_unknown_entries_to_legacy_cleanup(self):
+        control = self.root / r.CONTROL
+        unknown = control / "bundles" / ("0" * 64) / "owner-note"
+        unknown.parent.mkdir()
+        content = b"UNKNOWN USER BYTES; NOT A PACKAGE\x00\xff"
+        unknown.write_bytes(content)
+        self.refused_unchanged(lambda: r.operate("disable-queue", self.root), "Uncollected bundle entry")
+        self.assertEqual(unknown.read_bytes(), content)
+        self.assertTrue(self.status()["queue_enabled"])
+        unknown.unlink()  # This test owns the fixture bytes.
+        unknown.parent.rmdir()
+        stage = control / "stage" / "owner-note"
+        stage.parent.mkdir()
+        stage.write_bytes(content)
+        self.refused_unchanged(lambda: r.operate("disable-queue", self.root), "Private stage remains")
+        self.assertEqual(stage.read_bytes(), content)
+        self.assertTrue(self.status()["queue_enabled"])
+        self.preserved()
+
 
 if __name__ == "__main__":
     (Path(__file__).parents[1] / "out").mkdir(exist_ok=True)
