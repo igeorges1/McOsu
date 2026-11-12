@@ -1,5 +1,7 @@
 """Windows integration tests. Native fixture is test-only, never a game artifact."""
 import json
+from contextlib import contextmanager
+import ctypes
 import os
 from pathlib import Path
 import shutil
@@ -9,6 +11,7 @@ import sys
 import tempfile
 import time
 import unittest
+import zipfile
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -16,10 +19,29 @@ import runtime as r
 import build as builder
 
 
+@contextmanager
+def owned_process(command, **kwargs):
+    """Record identity; only terminate this owned handle if it exceeds the test."""
+    with subprocess.Popen(command, creationflags=subprocess.CREATE_NO_WINDOW, **kwargs) as p:
+        start = time.monotonic()
+        print(json.dumps({"test_pid": p.pid, "command": command, "cwd": str(kwargs.get("cwd", Path.cwd())),
+                          "exe_sha256": r.digest(command[0]), "deadline_s": 20}), file=sys.stderr, flush=True)
+        try:
+            yield p
+        finally:
+            if p.poll() is None:
+                p.kill()
+            p.wait(timeout=5)
+            print(json.dumps({"test_pid": p.pid, "exit": p.returncode, "exit_hex": hex(p.returncode & 0xffffffff),
+                              "elapsed_s": round(time.monotonic() - start, 3)}), file=sys.stderr, flush=True)
+
+
 @unittest.skipUnless(os.name == "nt", "Actual Windows deployment/process semantics required")
 class RuntimeIntegration(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        cls.error_mode = ctypes.WinDLL("kernel32").SetErrorMode(0x0001 | 0x0002)
+        cls.addClassCleanup(ctypes.WinDLL("kernel32").SetErrorMode, cls.error_mode)
         cls.shared = tempfile.TemporaryDirectory(prefix="mcosu-fixture-", dir=Path(__file__).parents[1] / "out")
         root = Path(cls.shared.name)
         source = root / "fixture.c"
@@ -27,6 +49,7 @@ class RuntimeIntegration(unittest.TestCase):
 #include <windows.h>
 #include <stdio.h>
 #include <direct.h>
+#include <stdlib.h>
 int main(int argc, char **argv) {
     char cwd[32768]; _getcwd(cwd, sizeof(cwd));
     FILE *f = fopen("fixture-cwd.txt", "wb");
@@ -37,7 +60,13 @@ int main(int argc, char **argv) {
             if (f) { fclose(f); break; } Sleep(10);
         }
     }
-    return 0;
+    if (argc > 3) {
+        f = fopen("scores.db", "wb");
+        if (!f) return 8; fputs(argv[3], f); fclose(f);
+    }
+    f = fopen("fixture-complete.txt", "wb");
+    if (!f) return 9; fputs("COMPLETE failures=0", f); fclose(f);
+    return argc > 2 ? atoi(argv[2]) : 0;
 }
 ''', encoding="utf-8")
         compiler = os.environ.get("MCOSU_TEST_CC")
@@ -45,7 +74,8 @@ int main(int argc, char **argv) {
             raise RuntimeError("Set MCOSU_TEST_CC to the GCC8 bin/gcc.exe used for the native test fixture")
         cls.exe = root / "fixture.exe"
         env = dict(os.environ, PATH=str(Path(compiler).parent) + os.pathsep + os.environ["PATH"])
-        subprocess.run([compiler, "-O2", "-static", str(source), "-o", str(cls.exe)], env=env, check=True)
+        subprocess.run([compiler, "-O2", "-static", str(source), "-o", str(cls.exe)], env=env, check=True, timeout=30)
+        print(f"Fixture {cls.exe} SHA256={r.digest(cls.exe)}", file=sys.stderr, flush=True)
 
     @classmethod
     def tearDownClass(cls):
@@ -92,7 +122,7 @@ int main(int argc, char **argv) {
     def cli(self, action, *args, root=None):
         return subprocess.run([sys.executable, str(r.__file__), action, "--runtime",
                                str(root or self.root), *map(str, args)],
-                              capture_output=True, text=True)
+                              capture_output=True, text=True, timeout=20)
 
     def refused_unchanged(self, callback, text=None):
         before = self.snapshot()
@@ -368,8 +398,7 @@ r.operate("update", Path(sys.argv[2]), Path(sys.argv[3]))
         self.assertTrue(path.exists(), "Native fixture failed to start")
 
     def test_external_active_image_is_refused_before_any_write(self):
-        with subprocess.Popen([str(self.root / "McOsu.exe"), "wait"], cwd=self.root,
-                              creationflags=subprocess.CREATE_NO_WINDOW) as child:
+        with owned_process([str(self.root / "McOsu.exe"), "wait"], cwd=self.root) as child:
             try:
                 self.await_file(self.root / "fixture-cwd.txt")
                 for action in ("update", "rollback", "launch", "recover"):
@@ -378,13 +407,13 @@ r.operate("update", Path(sys.argv[2]), Path(sys.argv[3]))
             finally:
                 (self.root / "fixture-release.txt").write_bytes(b"release our test-only process")
                 self.assertEqual(child.wait(timeout=10), 0)
+                self.assertEqual((self.root / "fixture-complete.txt").read_text(), "COMPLETE failures=0")
         self.preserved()
 
     def test_cli_launch_cwd_lock_and_native_exit(self):
         launcher = Path(r.__file__)
         command = [sys.executable, str(launcher), "launch", "--runtime", str(self.root), "--", "wait"]
-        with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-                              creationflags=subprocess.CREATE_NO_WINDOW) as process:
+        with owned_process(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True) as process:
             try:
                 self.await_file(self.root / "fixture-cwd.txt")
                 self.assertEqual(Path((self.root / "fixture-cwd.txt").read_text()), self.root)
@@ -394,6 +423,7 @@ r.operate("update", Path(sys.argv[2]), Path(sys.argv[3]))
                 stdout, stderr = process.communicate(timeout=10)
             self.assertEqual(process.returncode, 0, stderr)
             self.assertEqual(json.loads(stdout)["exit_code"], 0)
+            self.assertEqual((self.root / "fixture-complete.txt").read_text(), "COMPLETE failures=0")
         self.preserved()
 
     def test_lock_and_junction_refusals(self):
@@ -450,7 +480,177 @@ r.operate("update", Path(sys.argv[2]), Path(sys.argv[3]))
         self.assertNotIn("Git-ignored", accepted.stderr)
         self.assertIn("missing engine", accepted.stderr)
 
+    def stage(self, index=1, **kwargs):
+        return r.operate("stage", self.root, self.packages[index], **kwargs)
+
+    def status(self):
+        return r.operate("status", self.root)
+
+    def test_queue_independent_lock_replace_cancel_and_identity(self):
+        before = self.snapshot()
+        with r.locked(self.root):
+            self.assertEqual(self.stage()["result"], "staged")
+            staged = self.snapshot()
+            self.assertEqual(self.stage()["result"], "already-queued")
+            self.assertEqual(self.stage(0)["result"], "already-installed")
+            self.assertEqual(staged, self.snapshot())
+            self.refused_unchanged(lambda: self.stage(2), "--replace")
+            self.assertEqual(self.stage(2, replace=True)["queued"]["source"], "3" * 40)
+            self.assertEqual(self.status()["installed"]["source"], "1" * 40)
+            self.assertEqual(r.operate("cancel", self.root)["result"], "cancelled")
+        self.assertEqual({n: b for n, b in before.items() if not n.startswith(r.CONTROL + "/")},
+                         {n: b for n, b in self.snapshot().items() if not n.startswith(r.CONTROL + "/")})
+        self.assertIsNone(self.status()["backup"])
+
+    def test_launcher_stage_during_child_and_fresh_exit_backup(self):
+        ctl = self.root / "preview-runtime.py"
+        launch = self.root / "Launch-preview.cmd"
+        shutil.copyfile(r.__file__, ctl)
+        shutil.copyfile(Path(r.__file__).with_name(launch.name), launch)
+        (self.root / "preview-python.txt").write_text(sys.executable + "\n", encoding="ascii")
+        plan = subprocess.run([str(launch), "--dry-run"], cwd=self.base, shell=True,
+                              capture_output=True, text=True, timeout=20)
+        self.assertEqual(plan.returncode, 0, plan.stderr)
+        self.assertEqual(Path(json.loads(plan.stdout)["cwd"]), self.root)
+        cmd = [sys.executable, str(ctl), "launch", "--runtime", str(self.root), "--", "wait", "0", "last-save"]
+        with owned_process(cmd, cwd=self.base, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True) as process:
+            self.await_file(self.root / "fixture-cwd.txt")
+            self.assertEqual(self.stage()["result"], "staged")
+            pending = self.status()
+            self.assertEqual(pending["installed"]["source"], "1" * 40)
+            self.assertIsNone(pending["backup"])
+            self.assertTrue(pending["active_images"])
+            (self.root / "fixture-release.txt").touch()
+            stdout, stderr = process.communicate(timeout=20)
+            self.assertEqual(process.returncode, 0, stderr)
+        self.assertEqual(json.loads(stdout)["after_exit"]["result"], "promoted")
+        self.assertEqual((self.root / "fixture-complete.txt").read_text(), "COMPLETE failures=0")
+        current = self.status()
+        self.assertEqual(current["installed"]["source"], "2" * 40)
+        self.assertEqual(current["previous"]["source"], "1" * 40)
+        self.sentinels["scores.db"] = b"last-save"
+        self.preserved()
+        with zipfile.ZipFile(current["backup"]["path"]) as z:
+            meta = json.loads(z.read("backup.json"))
+            expected = {n: b for n, b in self.sentinels.items() if n.split("/")[0] in r.BACKUP_PATHS}
+            self.assertEqual({n: z.read("state/" + n) for n in meta["files"]}, expected)
+            self.assertEqual(meta["candidate"], current["installed"]["id"])
+
+    def test_nonzero_exit_holds_and_defer_suppresses_both_edges(self):
+        self.stage()
+        (self.root / "fixture-release.txt").touch()
+        run = self.cli("launch", "--defer-queue", "--", "wait", "9")
+        self.assertEqual(run.returncode, 9, run.stderr)
+        self.assertEqual(self.status()["queued"]["phase"], "queued")
+        self.assertIsNone(self.status()["backup"])
+        r.operate("cancel", self.root)
+        (self.root / "fixture-release.txt").unlink()
+        (self.root / "fixture-cwd.txt").unlink()
+        cmd = [sys.executable, str(r.__file__), "launch", "--runtime", str(self.root), "--", "wait", "9"]
+        with owned_process(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True) as process:
+            self.await_file(self.root / "fixture-cwd.txt")
+            self.stage()
+            (self.root / "fixture-release.txt").touch()
+            stdout, stderr = process.communicate(timeout=20)
+            self.assertEqual(process.returncode, 9, stderr)
+        self.assertEqual(json.loads(stdout)["after_exit"]["result"], "held")
+        held = self.status()
+        self.stage()
+        self.stage(0)
+        self.assertEqual(self.status(), held)
+        self.assertEqual(self.cli("launch").returncode, 0)
+        self.assertEqual(self.status(), held)
+        self.assertEqual(r.operate("retry", self.root)["result"], "promoted")
+
+    def test_failed_or_missing_candidate_and_failed_backup_never_auto_retry(self):
+        self.stage()
+        p = self.status()["queued"]["id"]
+        bundle = self.root / r.CONTROL / "bundles" / p
+        shutil.move(bundle, self.base / "removed-package")
+        result = self.cli("launch")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["before_launch"]["result"], "failed")
+        self.assertEqual(self.status()["queued"]["phase"], "held")
+        self.assertIsNone(self.status()["backup"])
+        self.stage()  # Repairs the missing copy, without rearming it.
+        with patch.object(r, "BACKUP_LIMIT", 0):
+            self.assertEqual(r.operate("retry", self.root)["exit_code"], 1)
+        held = self.status()
+        self.assertIn("backup size limit", held["last"]["detail"])
+        self.assertEqual(held["installed"]["source"], "1" * 40)
+        self.assertEqual(self.cli("launch").returncode, 0)
+        self.assertEqual(self.status(), held)
+        self.assertEqual(r.operate("retry", self.root)["result"], "promoted")
+        self.preserved()
+
+    def test_prelaunch_promotion_known_good_and_safe_gc(self):
+        pin = r.operate("pin", self.root)["known_good"]
+        unknown = self.root / r.CONTROL / "bundles" / ("0" * 64)
+        unknown.mkdir()
+        (unknown / "owner-note").write_text("leave me")
+        self.stage()
+        result = self.cli("launch")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["before_launch"]["result"], "promoted")
+        self.stage(2)
+        r.operate("retry", self.root)
+        self.assertEqual(self.status()["known_good"]["id"], pin)
+        r.operate("rollback", self.root, to="known-good", acknowledge_state_risk=True)
+        self.assertEqual(self.status()["installed"]["id"], pin)
+        self.preserved()
+        self.assertEqual((unknown / "owner-note").read_text(), "leave me")
+        self.assertEqual(len(list((self.root / r.CONTROL).glob("*.zip"))), 1)
+
+    def test_queue_interrupted_journal_protects_references_and_reconciles(self):
+        self.stage()
+        before = self.status()["installed"]["id"]
+        code = '''import os, sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+import runtime as r
+original = os.replace
+def interrupt(source, target):
+    original(source, target)
+    if Path(target).name == "common.txt": os._exit(76)
+r.os.replace = interrupt
+r.operate("retry", Path(sys.argv[2]))
+'''
+        result = subprocess.run([sys.executable, "-c", code, str(Path(r.__file__).parent), str(self.root)], timeout=20)
+        self.assertEqual(result.returncode, 76)
+        interrupted = self.status()
+        self.assertTrue(interrupted["recovery_required"])
+        self.assertEqual(interrupted["queued"]["phase"], "held")
+        for act in ("cancel", "pin"):
+            with self.assertRaisesRegex(r.Refusal, "Interrupted"):
+                r.operate(act, self.root)
+        with self.assertRaisesRegex(r.Refusal, "Interrupted"):
+            self.stage(2, replace=True)
+        r.operate("recover", self.root)
+        self.assertEqual(self.status()["installed"]["id"], before)
+        self.assertEqual(r.operate("retry", self.root)["result"], "promoted")
+        self.preserved()
+
+    def test_legacy_migration_and_downgrade_gate(self):
+        r.operate("disable-queue", self.root)
+        self.assertFalse(self.status()["queue_enabled"])
+        self.refused_unchanged(lambda: self.stage(), "Enable the queue")
+        state = r.read_json(self.root / r.CONTROL / "state.json")
+        self.assertEqual(state["kind"], "mcosu-flat-runtime-v1")
+        r.operate("enable-queue", self.root)
+        self.assertNotEqual(r.read_json(self.root / r.CONTROL / "state.json")["kind"], state["kind"])
+        self.stage()
+        self.refused_unchanged(lambda: r.operate("disable-queue", self.root), "Cancel the queue")
+        r.operate("cancel", self.root)
+        r.operate("pin", self.root)
+        self.refused_unchanged(lambda: r.operate("disable-queue", self.root), "unpin")
+        r.operate("unpin", self.root)
+        r.operate("disable-queue", self.root)
+        self.assertEqual(r.read_json(self.root / r.CONTROL / "state.json"), state)
+        self.preserved()
+
 
 if __name__ == "__main__":
     (Path(__file__).parents[1] / "out").mkdir(exist_ok=True)
-    unittest.main(verbosity=2)
+    result = unittest.main(verbosity=2, exit=False, failfast=True).result
+    print(f"COMPLETE failures={len(result.failures) + len(result.errors)} tests={result.testsRun}", flush=True)
+    sys.exit(0 if result.wasSuccessful() else 1)

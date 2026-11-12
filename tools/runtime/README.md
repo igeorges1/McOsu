@@ -1,5 +1,9 @@
 # Reusable Windows builds and runtimes
 
+For queued preview updates, see the [lifecycle, command reference and migration
+recipe](QUEUED-PREVIEW.md). A managed preview can stage a verified package while
+the game runs and promote it at a launcher boundary.
+
 Python 3.13+, Git, and GCC **8.1.0 i686 / Win32 threads / DWARF2** are required.
 These tools do not change gameplay. They do not choose channels or install into
 Steam. Every build, package and runtime destination is an explicit caller input.
