@@ -36,7 +36,8 @@ int main()
 	assert(text.find("Playback 1.50x; 300 half-window 50.00 map ms; reference -10.00 map ms") != std::string::npos);
 	assert(text.find("Learned SD: 4.00 ms / 2 hits") != std::string::npos);
 	assert(text.find("Cue mute status muted") != std::string::npos);
-	assert(text.find("HUD view Recent window (5s)") != std::string::npos);
+	assert(text.find("HUD view Recent window (selected)") != std::string::npos);
+	assert(text.find("ordinary 10.00 ms; cap 33.33 ms") != std::string::npos);
 	assert(text.find("osu_timing_audio_target = -0.2") != std::string::npos);
 
 	config.require300 = true;

@@ -7,6 +7,13 @@
 
 namespace OsuTimingAudioHUD
 {
+	inline double setting(double value, double fallback, double minimum, double maximum)
+	{
+		return std::isfinite(value) ? std::max(minimum, std::min(maximum, value)) : fallback;
+	}
+
+	inline double recentDuration(double value) { return setting(value, 5, 0.1, 60); }
+
 	struct Span
 	{
 		bool visible = false;
@@ -61,11 +68,12 @@ namespace OsuTimingAudioHUD
 	class Transition
 	{
 	public:
-		OsuTimingAudioEvaluation present(const OsuTimingAudioView &view, double windowMapMS, double now)
+		OsuTimingAudioEvaluation present(const OsuTimingAudioView &view, double windowMapMS, double now, double duration = 0.12)
 		{
 			const auto &previous = m_target.evaluation;
 			const auto &next = view.evaluation;
 			if (!m_initialized || !std::isfinite(now) || now < m_started || windowMapMS != m_window
+				|| !std::isfinite(duration) || duration <= 0 || duration != m_duration
 				|| view.generation != m_target.generation || view.speed != m_target.speed
 				|| view.window300MapMS != m_target.window300MapMS || view.bandMode != m_target.bandMode
 				|| view.mode != m_target.mode || next.recent != previous.recent
@@ -80,6 +88,7 @@ namespace OsuTimingAudioHUD
 				m_target = view;
 				m_start = next;
 				m_started = now;
+				m_duration = duration;
 				return next;
 			}
 
@@ -114,7 +123,7 @@ namespace OsuTimingAudioHUD
 		OsuTimingAudioEvaluation at(double now) const
 		{
 			auto value = m_target.evaluation;
-			const double fraction = (now - m_started) / 0.12;
+			const double fraction = (now - m_started) / m_duration;
 			if (fraction >= 1.0) return value;
 			value.learnedMeanMapMS = interpolate(m_start.learnedMeanMapMS, value.learnedMeanMapMS, fraction);
 			value.spreadMapMS.lower = interpolate(m_start.spreadMapMS.lower, value.spreadMapMS.lower, fraction);
@@ -123,7 +132,7 @@ namespace OsuTimingAudioHUD
 		}
 
 		bool m_initialized = false;
-		double m_window = 0, m_started = 0;
+		double m_window = 0, m_started = 0, m_duration = 0;
 		OsuTimingAudioView m_target;
 		OsuTimingAudioEvaluation m_start;
 	};

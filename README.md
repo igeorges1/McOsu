@@ -14,6 +14,8 @@ Binaries are available for **Windows**, **Linux**, **macOS** and the **Nintendo 
 
 Note that Linux and macOS support is not as polished as Windows, and some functions like raw input or mouse sensitivity may not work (correctly) there.
 
+See the [timing audio system map](docs/timing-audio.md) for the experimental cues, live HUD, and tuning controls in this source tree.
+
 ## Notable features which osu! doesn't have (yet) in comparison:
 - Virtual Reality support (HTC Vive + Oculus Rift)
 - Mid-play empty section skipping
