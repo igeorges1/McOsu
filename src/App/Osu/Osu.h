@@ -116,6 +116,7 @@ public:
 	void volumeDown(int multiplier = 1) {onVolumeChange(-multiplier);}
 
 	void saveScreenshot();
+	void markTimingCapture();
 
 	void setSkin(UString skin) {onSkinChange("", skin);}
 	void reloadSkin() {onSkinReload();}
@@ -208,6 +209,11 @@ public:
 	void updateWindowsKeyDisable();
 
 private:
+	void finishTimingCaptureScreenshot(Graphics *g);
+	UString m_timingCaptureScreenshotDirectory;
+	std::string m_timingCaptureScreenshotMap;
+	unsigned long long m_timingCaptureScreenshotEpoch = 0;
+	int m_timingCaptureHeldKey = 0;
 	static Vector2 g_vInternalResolution;
 
 	void updateModsForConVarTemplate(UString oldValue, UString newValue) {updateMods();}

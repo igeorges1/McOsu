@@ -43,11 +43,12 @@ def limits(kind, low, high, default):
 audio = declarations(read("OsuTimingAudioFeedback.cpp"), r"osu_timing_audio(?:_\w+)?")
 hud = declarations(read("OsuHUD.cpp") + read("OsuBeatmap.cpp"),
                    r"osu_(?:hud_hiterrorbar_\w+|draw_hiterrorbar(?:_\w+)?|hiterrorbar_misaims)")
+capture = declarations(read("OsuTimingAudioFeedback.cpp"), r"osu_timing_capture_\w+")
 audio_pattern = r'\{"(osu_timing_audio\w*)", "([^"]+)", (\w+), ([^,]+), ([^,]+), (true|false)(?:, "([^"]+)")?\}'
 hud_pattern = r'\{"(osu_\w+)", "([^"]+)", (\w+), (\w+), ([^,]+), ([^,]+), "([^"]+)"\}'
 audio_fields = re.findall(audio_pattern, read("OsuTimingAudioSettings.h"))
 hud_fields = re.findall(hud_pattern, read("OsuTimingAudioHudControls.h"))
-for registry, fields in ((audio, audio_fields), (hud, hud_fields)):
+for registry, fields in ((audio, audio_fields), (dict(hud, **capture), hud_fields)):
     names = [field[0] for field in fields]
     assert len(names) == len(set(names)), "Duplicate timing control"
     assert set(names) == set(registry), {"missing": set(registry) - set(names), "unknown": set(names) - set(registry)}
@@ -82,7 +83,8 @@ for name, label, kind, lo, hi, restart, migration in audio_fields:
         effect = "Off resets timing"
     lines.append(f"| {label} | `{name}` | `{default}` | {limits(kind, lo, hi, default)} | {effect} | {help_text} |")
 
-headings = {"TIMING": "Timing Audio HUD", "APPEARANCE": "Timing Overlay Appearance", "BAR": "Hit Error Bar Appearance and Layout"}
+headings = {"CAPTURE": "Live Timing Debug Capture", "TIMING": "Timing Audio HUD",
+            "APPEARANCE": "Timing Overlay Appearance", "BAR": "Hit Error Bar Appearance and Layout"}
 group = None
 for name, label, section, kind, lo, hi, help_text in hud_fields:
     if section != group:
@@ -91,8 +93,13 @@ for name, label, section, kind, lo, hi, help_text in hud_fields:
                   "Applies immediately and saves to ordinary Options config.", "",
                   "| Control | Key | Default | Options range | Effect |",
                   "| --- | --- | --- | --- | --- |"]
-    default, _ = hud[name]
-    accepted = "0 Audio, 1 Recent, 2 Projected average, 3 Projected reference" if kind == "View" else limits(kind, lo, hi, default)
+    default, _ = (capture if section == "CAPTURE" else hud)[name]
+    if kind == "View":
+        accepted = "0 Audio, 1 Recent, 2 Projected average, 3 Projected reference"
+    elif kind == "CaptureKey":
+        accepted = "Key binding or 0 (unbound)"
+    else:
+        accepted = limits(kind, lo, hi, default)
     lines.append(f"| {label} | `{name}` | `{default}` | {accepted} | {help_text} |")
 
 reference = root / "docs/timing-audio-controls.md"
@@ -101,4 +108,4 @@ if args.write_docs:
     reference.write_text(generated, encoding="utf-8")
 else:
     assert reference.read_text(encoding="utf-8") == generated, "Stale timing reference. Regenerate it with --write-docs."
-print(f"PASS: {len(audio_fields)} audio settings and {len(hud_fields)} HUD settings match registration and tracked reference")
+print(f"PASS: {len(audio_fields)} audio settings, {len(hud)} HUD settings and {len(capture)} capture settings match registration and tracked reference")

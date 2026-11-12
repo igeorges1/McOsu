@@ -41,6 +41,16 @@ All rows below save to ordinary config and named audio profiles.
 | Keep last good cue if replacement fails | `osu_timing_audio_retain_failed_cue` | `true` | On / Off | Keeps learner | Keep using the last good cue for a direction after a failed replacement. Off leaves that direction silent. |
 | Diagnostic logging (adds overhead) | `osu_timing_audio_trace` | `false` | On / Off | Keeps learner | Log preceding baseline, error, output and actual playback success; diagnostic overhead only when enabled. |
 
+## Live Timing Debug Capture
+
+Applies immediately and saves to ordinary Options config.
+
+| Control | Key | Default | Options range | Effect |
+| --- | --- | --- | --- | --- |
+| Capture timing debug evidence | `osu_timing_capture_enabled` | `false` | On / Off | Opt-in local recording. Enable before retrying or starting a map for a replayable prefix. |
+| Save screenshot when marking a problem | `osu_timing_capture_screenshot` | `true` | On / Off | Saves a separate gameplay frame on the next draw. The timing report can be used without a screenshot. |
+| Mark problem key | `osu_timing_capture_mark_key` | `0` | Key binding or 0 (unbound) | Choose an unused key for standard play, or use the Mark problem button. Zero is unbound. |
+
 ## Timing Audio HUD
 
 Applies immediately and saves to ordinary Options config.

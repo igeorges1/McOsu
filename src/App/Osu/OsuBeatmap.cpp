@@ -1199,6 +1199,7 @@ void OsuBeatmap::skipEmptySection()
 	else
 		m_music->setPositionMS(std::max(m_iNextHitObjectTime - (long)(offset * offsetMultiplier), (long)0));
 
+	m_timingAudioFeedback->captureSkip();
 	engine->getSound()->play(m_osu->getSkin()->getMenuHit());
 }
 
@@ -2358,6 +2359,17 @@ void OsuBeatmap::reloadTimingAudioSounds()
 OsuTimingAudioView OsuBeatmap::getTimingAudioView(OsuTimingAudioView::Mode mode, double recentSeconds, bool includeCueStatus) const
 {
 	return m_timingAudioFeedback->getCurrentView(mode, recentSeconds, includeCueStatus);
+}
+
+bool OsuBeatmap::writeTimingCapture(std::ostream &out, const std::string &source, const std::string &map,
+	const std::string &metadata, double recentSeconds, bool &sufficient)
+{
+	return m_timingAudioFeedback->writeCapture(out, source, map, metadata, recentSeconds, sufficient);
+}
+
+unsigned long long OsuBeatmap::getTimingCaptureEpoch() const
+{
+	return m_timingAudioFeedback->captureEpoch();
 }
 
 void OsuBeatmap::playTimingFeedback(long opportunityMS, long delta, OsuScore::HIT result)

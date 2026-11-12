@@ -43,6 +43,17 @@ void OsuOptionsMenu::addTimingAudioOptions()
 	m_elements.back().searchTags = "timing audio status";
 	addButton("Apply timing settings to game")->setClickCallback(fastdelegate::MakeDelegate(this, &OsuOptionsMenu::onTimingAudioApply));
 	m_elements.back().searchTags = "timing audio apply target gain reference width adaptive half-life startup gate break cue";
+	addSubSection("Live Timing Debug Capture");
+	for (const auto &control : OsuTimingAudioHudControls::controls())
+	{
+		if (control.group != OsuTimingAudioHudControls::CAPTURE) continue;
+		auto *var = convar->getConVarByName(control.name);
+		if (control.kind == OsuTimingAudioHudControls::CaptureKey) addKeyBindButton(control.label, var);
+		else addCheckbox(control.label, control.help, var);
+		m_elements.back().searchTags = UString::format("%s %s", control.name, control.help);
+	}
+	addButton("Mark problem")->setClickCallback(fastdelegate::MakeDelegate(this, &OsuOptionsMenu::onMarkTimingCapture));
+	m_elements.back().searchTags = "timing capture report screenshot marker";
 	addSubSection("Timing Audio Reference and Band");
 	addLabel("Target 0 is center. Negative is early.");
 	addLabel("Targets 1, 2 and 3 use the 300, 100 and 50 edges.");
@@ -110,6 +121,7 @@ void OsuOptionsMenu::addTimingAudioOptions()
 	Group group = BAR;
 	for (const Control &control : controls())
 	{
+		if (control.group == CAPTURE) continue;
 		if (control.group != group)
 		{
 			group = control.group;
@@ -252,6 +264,11 @@ void OsuOptionsMenu::onCopyTimingAudioSetup()
 		"osu_volume_master", "osu_volume_master_inactive"}) appendSetting(name);
 	env->setClipBoardText(text.c_str());
 	m_osu->getNotificationOverlay()->addNotification("Applied timing setup copied.", 0xffffffff, false, 1.5f);
+}
+
+void OsuOptionsMenu::onMarkTimingCapture()
+{
+	m_osu->markTimingCapture();
 }
 
 OsuTimingAudioSettings::Values OsuOptionsMenu::timingAudioDraft() const

@@ -135,6 +135,8 @@ def build(source, engine, toolchain, assets, out, jobs):
         obj = objects / (str(index) + ".o")
         compiler = toolchain / ("bin/g++.exe" if path.suffix == ".cpp" else "bin/gcc.exe")
         args = [str(compiler)] + (["-std=c++11"] if path.suffix == ".cpp" else []) + FLAGS
+        if path == src / "App/Osu/Osu.cpp":
+            args.append("-DMCOSU_CAPTURE_SOURCE=" + head)
         args += ["-I" + p.as_posix() for p in includes] + ["-o", obj.as_posix(), path.as_posix()]
         # Response files also work with spaces in every caller-selected path.
         response = objects / (str(index) + ".args")
@@ -191,6 +193,7 @@ def build(source, engine, toolchain, assets, out, jobs):
     require(asset_inventory(assets) == baseline, "Asset baseline changed during build")
     identity = {"source": head, "dirty": False, "engine": ENGINE_PIN, "toolchain": tc,
                 "compiler_flags": ["-std=c++11", *FLAGS], "libraries": list(LIBRARIES),
+                "capture_source_define": "MCOSU_CAPTURE_SOURCE=" + head,
                 "engine_binding": "Osu include/constructor; disable FrameworkTest constructor",
                 "asset_baseline_sha256": hashlib.sha256(canonical(baseline)).hexdigest()}
     record = {"complete": True, "identity": identity, "translation_units": len(sources),
