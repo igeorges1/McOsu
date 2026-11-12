@@ -43,6 +43,15 @@ struct OsuTimingAudioEvaluation
 
 struct OsuTimingAudioView
 {
+	struct BandStatus
+	{
+		enum Limit { NONE, MINIMUM, MAXIMUM };
+		double baseHalfWidthMS = std::numeric_limits<double>::quiet_NaN();
+		double resolvedHalfWidthMS = std::numeric_limits<double>::quiet_NaN();
+		unsigned long long learnedHits = 0;
+		Limit limit = NONE;
+	};
+
 	enum Mode { AUDIO_ESTIMATE, RECENT_WINDOW, NEXT_AT_AVERAGE, NEXT_AT_REFERENCE, MODE_COUNT };
 	static Mode fromSetting(int setting)
 	{
@@ -60,6 +69,7 @@ struct OsuTimingAudioView
 	}
 
 	OsuTimingAudioEvaluation evaluation;
+	BandStatus band;
 	unsigned long long generation = 0;
 	int bandMode = 0;
 	Mode mode = AUDIO_ESTIMATE;
