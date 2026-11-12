@@ -91,7 +91,7 @@ case deliberately claims only the history seam.
 | `OsuTimingAudioSettingsTest` | Schema, config retention and profile parser | Validation, exact decimal/Unicode roundtrip and negative inputs |
 | `OsuTimingAudioSetupTest` | Applied setup formatting | State/readout text; executable renamed `Readout` to avoid installer detection |
 | `OsuTimingAudioIdleTest` | Idle/startup/recovery policy and shared clock | Numeric/state policy, not player usefulness |
-| `settings-inventory` | Registration ↔ metadata ↔ generated reference | Exact 30 audio/71 HUD registration, defaults/ranges/reference correspondence |
+| `settings-inventory` | Registration ↔ metadata ↔ generated reference | Audio, HUD and capture registration, defaults/ranges/reference correspondence |
 | `preroll-history` | Frozen/current production RecentWindow | Exact RED/fixed/current GREEN as above |
 
 The [timing system map](timing-audio.md) and [generated controls](timing-audio-controls.md)
@@ -173,3 +173,4 @@ recipes **for the coverage in this map**. Those original experiments and logs
 remain historical evidence. Reuse is established by independent clean-checkout
 execution from this guide plus the explicit compiler input; no time-savings or
 general gameplay reproducibility claim follows.
+For an exported live timing report, use [capture replay](timing-capture.md#reproduce-a-marked-sequence) with the same toolchain and the exact clean source named in the report.

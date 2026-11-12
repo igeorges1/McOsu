@@ -221,7 +221,38 @@ class Run:
             executable = self.compile(suite, generated)
             self.command(suite, [executable], self.args.test_timeout, marker=f"COMPLETE {suite} failures=0")
         self.command("settings-inventory", [sys.executable, "-B", self.snapshot / "tests/check-timing-audio-settings.py"],
-                     self.args.test_timeout, marker="PASS: 30 audio settings and 71 HUD settings match registration and tracked reference")
+                     self.args.test_timeout, marker="capture settings match registration and tracked reference")
+
+    def capture(self):
+        require(not self.record["source"]["status"], "Replay requires a clean checkout of the captured source")
+        origin = Path(self.args.capture).resolve()
+        limit = 40 * 1024 * 1024
+        require(origin.is_file() and 0 < origin.stat().st_size <= limit, "Capture missing, empty or over 40 MiB")
+        with origin.open("rb") as stream:
+            data = stream.read(limit + 1)
+        require(0 < len(data) <= limit, "Capture missing, empty or over 40 MiB")
+        target = self.out / "capture.mct"
+        target.write_bytes(data)
+        self.record["capture"] = {"origin": str(origin), "bytes": len(data), "sha256": digest(target)}
+        self.save()
+        trailer = re.search(rb"\nchecksum ([0-9a-f]{16})\n\Z", data[-27:])
+        require(trailer is not None, "Missing capture checksum; report may be truncated")
+        value = 14695981039346656037
+        for byte in memoryview(data)[:-26]:
+            value = ((value ^ byte) * 1099511628211) & 0xffffffffffffffff
+        require(f"{value:016x}".encode() == trailer.group(1), "Capture checksum mismatch; report may be corrupt")
+        source = self.out / "capture.cpp"
+        shutil.copyfile(self.snapshot / "tests/verification/TimingCapture.cpp", source)
+        self.record["staged_headers"]["capture.cpp"] = digest(source)
+        self.record["staged_headers"]["capture.mct"] = digest(target)
+        self.save()
+        executable = self.compile("timing-capture", source, ("-I", self.out / "h"))
+        try:
+            self.command("capture-replay", [executable, target.name, self.record["source"]["head"]],
+                         self.args.test_timeout, marker="COMPLETE capture failures=0")
+        except Failure:
+            print(read(self.out / "capture-replay.stderr.log").rstrip(), flush=True)
+            raise
 
     def regression(self):
         for label in ("old", "fixed", "current"):
@@ -260,17 +291,22 @@ def main():
     parser.add_argument("--toolchain", required=True, help="Explicit extracted GCC8.1 mingw32 directory")
     parser.add_argument("--profile", choices=["timing", "runner-contract"], default="timing")
     parser.add_argument("--case", choices=[CASE], help="Run only the named historical/current case, after common preflight")
+    parser.add_argument("--capture", help="Replay an exported timing capture from this exact clean source revision")
     parser.add_argument("--compile-timeout", type=positive, default=60)
     parser.add_argument("--test-timeout", type=positive, default=15)
     args = parser.parse_args()
     parser.error("--case requires --profile timing") if args.case and args.profile != "timing" else None
+    if args.capture and (args.case or args.profile != "timing"):
+        parser.error("--capture is a separate run from --case or --profile runner-contract")
     nonmodal()
     run = None
     try:
         run = Run(args)
         print("RUN " + str(run.out), flush=True)
         run.preflight()
-        if args.profile == "runner-contract":
+        if args.capture:
+            run.capture()
+        elif args.profile == "runner-contract":
             run.command("runner-contract", [sys.executable, "-B", run.snapshot / "tests/verification/check_runner.py",
                                             "--compiler", run.compiler, "--out", run.out / "contract"],
                         60, marker="COMPLETE runner-contract failures=0 tests=6")
