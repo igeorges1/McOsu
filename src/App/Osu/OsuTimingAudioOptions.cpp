@@ -20,6 +20,7 @@
 #include "OsuTimingAudioHUD.h"
 #include "OsuTimingAudioHudControls.h"
 #include "OsuUISlider.h"
+#include "OsuTooltipOverlay.h"
 #include <algorithm>
 #include <cctype>
 
@@ -69,7 +70,7 @@ void OsuOptionsMenu::addTimingAudioOptions()
 			m_timingAudioMuteButton->setClickCallback(fastdelegate::MakeDelegate(this, &OsuOptionsMenu::onTimingAudioMute));
 			m_elements.back().searchTags = "timing audio mute";
 		}
-		TimingAudioField field = {&spec, NULL, NULL};
+		TimingAudioField field = {&spec, NULL, NULL, NULL};
 		const auto &help = convar->getConVarByName(spec.name)->getHelpstring();
 		const UString tags = UString::format("timing audio %s %s %s", spec.label, spec.name, help.toUtf8());
 		if (key == "osu_timing_audio_deadzone_mode")
@@ -81,7 +82,7 @@ void OsuOptionsMenu::addTimingAudioOptions()
 			field.checkbox = addCheckbox(spec.label, help, NULL);
 		else
 		{
-			addLabel(spec.label);
+			field.label = addLabel(spec.label);
 			m_elements.back().searchTags = tags;
 			field.textbox = addTextbox("", (ConVar*)NULL);
 		}
@@ -128,6 +129,7 @@ void OsuOptionsMenu::addTimingAudioOptions()
 		else
 		{
 			auto *slider = addSlider(control.label, control.min, control.max, var);
+			m_elements.back().timingHudHelp = control.help;
 			slider->setKeyDelta(control.kind == Integer ? 1.0f : (control.kind == Precise ? 0.001f : 0.01f));
 			if (control.kind == Integer)
 				slider->setChangeCallback(fastdelegate::MakeDelegate(this, &OsuOptionsMenu::onSliderChangeInt));
@@ -288,21 +290,64 @@ void OsuOptionsMenu::updateTimingAudioEditor()
 	}
 	m_timingAudioMuteButton->setText(convar->getConVarByName("osu_timing_audio_muted")->getBool()
 		? "Unmute cues (keep learning)" : "Mute cues (keep learning)");
+	const bool tooltipsAllowed = m_options->isMouseInside() && !m_contextMenu->isVisible();
+	const auto &visible = m_options->getContainer()->getElements();
+	const auto hovered = [&](CBaseUIElement *element)
+	{
+		return tooltipsAllowed && element->isMouseInside() && std::find(visible.begin(), visible.end(), element) != visible.end();
+	};
+	const auto tooltip = [&](const UString &help, const UString &range, const char *inactive, const char *apply)
+	{
+		auto *overlay = m_osu->getTooltipOverlay();
+		overlay->begin();
+		overlay->addLine(help);
+		if (range.length() > 0) overlay->addLine(range);
+		if (inactive != NULL) overlay->addLine(inactive);
+		if (apply != NULL) overlay->addLine(apply);
+		overlay->end();
+	};
+	bool tooltipShown = false;
 	for (const TimingAudioField &field : m_timingAudioFields)
 	{
 		if (field.textbox == NULL) continue;
 		const std::string key = field.spec->name;
-		bool enabled = true;
-		if (key == "osu_timing_audio_target") enabled = draft.at("osu_timing_audio_recent") == "0";
-		if (key == "osu_timing_audio_deadzone") enabled = m_timingAudioWidth != 1;
-		if (key == "osu_timing_audio_deadzone_fraction") enabled = m_timingAudioWidth == 1;
-		if (key.find("osu_timing_audio_deadzone_adaptive_") == 0) enabled = m_timingAudioWidth == 2;
-		if (key.find("osu_timing_audio_idle_") == 0) enabled = m_timingAudioWidth == 2 && draft.at("osu_timing_audio_idle_forgiveness") == "1";
-		if (key == "osu_timing_audio_silent_startup_hits") enabled = draft.at("osu_timing_audio_recent") == "1" && draft.at("osu_timing_audio_silent_startup") == "1";
-		if (key == "osu_timing_audio_half_life_seconds") enabled = draft.at("osu_timing_audio_fixed_hits") == "0";
-		if (key == "osu_timing_audio_half_life_hits") enabled = draft.at("osu_timing_audio_fixed_hits") == "1";
-		field.textbox->setEnabled(enabled);
+		const char *inactive = NULL;
+		if (key == "osu_timing_audio_target" && draft.at("osu_timing_audio_recent") != "0") inactive = "Select Beatmap reference.";
+		else if (key == "osu_timing_audio_deadzone" && m_timingAudioWidth == 1) inactive = "Select Fixed milliseconds or Adaptive spread.";
+		else if (key == "osu_timing_audio_deadzone_fraction" && m_timingAudioWidth != 1) inactive = "Select Map-relative fraction.";
+		else if (key.find("osu_timing_audio_deadzone_adaptive_") == 0 && m_timingAudioWidth != 2) inactive = "Select Adaptive spread.";
+		else if (key.find("osu_timing_audio_idle_") == 0)
+		{
+			if (m_timingAudioWidth != 2) inactive = "Select Adaptive spread.";
+			else if (draft.at("osu_timing_audio_idle_forgiveness") != "1") inactive = "Enable Widen adaptive band during idle.";
+		}
+		else if (key == "osu_timing_audio_silent_startup_hits")
+		{
+			if (draft.at("osu_timing_audio_recent") != "1") inactive = "Select Recent reference.";
+			else if (draft.at("osu_timing_audio_silent_startup") != "1") inactive = "Enable Mute Recent during startup.";
+		}
+		else if (key == "osu_timing_audio_half_life_seconds" && draft.at("osu_timing_audio_fixed_hits") != "0") inactive = "Select time adaptation.";
+		else if (key == "osu_timing_audio_half_life_hits" && draft.at("osu_timing_audio_fixed_hits") != "1") inactive = "Select hit-count adaptation.";
+		field.textbox->setEnabled(inactive == NULL);
+		UString label = field.spec->label;
+		if (inactive != NULL) label.append(" (inactive)");
+		if (field.label->getText() != label) field.label->setText(label);
+		if (!tooltipShown && (hovered(field.label) || hovered(field.textbox)))
+		{
+			const auto &help = convar->getConVarByName(field.spec->name)->getHelpstring();
+			const UString range = field.spec->type == OsuTimingAudioSettings::FILENAME ? UString()
+				: UString::format("Range %.6g to %.6g", (double)field.spec->min, (double)field.spec->max);
+			tooltip(help, range, inactive, field.spec->restarts ? "Apply resets learning." : "Apply keeps learning.");
+			tooltipShown = true;
+		}
 	}
+	if (tooltipsAllowed && !tooltipShown)
+		for (const OPTIONS_ELEMENT &row : m_elements)
+			if (row.timingHudHelp != NULL && (hovered(row.elements[0]) || hovered(row.elements[1])))
+			{
+				tooltip(row.timingHudHelp, UString(), NULL, "Applies immediately.");
+				break;
+			}
 }
 
 void OsuOptionsMenu::timingAudioStatus(UString text, bool error)

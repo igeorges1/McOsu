@@ -22,7 +22,7 @@ All rows below save to ordinary config and named audio profiles.
 | Adaptive maximum fraction of 300 | `osu_timing_audio_deadzone_adaptive_max` | `1` | `0`–`10` | Keeps learner | Adaptive maximum half-width as a fraction of the current 300 half-window. |
 | Adaptive startup uses maximum (off = fixed ms) | `osu_timing_audio_adaptive_startup_maximum` | `false` | On / Off | Keeps learner | Use the adaptive maximum for the first two accepted hits. Off uses fixed width. |
 | Widen adaptive band during idle | `osu_timing_audio_idle_forgiveness` | `false` | On / Off | Keeps learner | Widen the learned adaptive band toward its configured maximum during counted play without accepted hits. |
-| Idle grace (real-play seconds) | `osu_timing_audio_idle_grace_seconds` | `1` | `0`–`60` | Keeps learner | Counted-play seconds before the band starts widening (0-60). |
+| Idle grace (real-play seconds) | `osu_timing_audio_idle_grace_seconds` | `1` | `0`–`60` | Keeps learner | Counted-play seconds before widening. Zero allows widening as soon as counted time advances. |
 | Idle widening ramp (real-play seconds) | `osu_timing_audio_idle_ramp_seconds` | `3` | `0`–`60` | Keeps learner | Counted-play seconds to ramp from zero allowance to the cap (0-60). Zero widens to cap after grace. |
 | Idle recovery (accepted hits) | `osu_timing_audio_idle_recovery_hits` | `4` | `1`–`128` | Keeps learner | Accepted hits to remove full idle allowance (1-128). A hit uses the width before its recovery step. |
 | Use hit-count adaptation (off = time) | `osu_timing_audio_fixed_hits` | `false` | On / Off | Resets learner | Use hit-count EMA instead of active-play-time EMA. |
