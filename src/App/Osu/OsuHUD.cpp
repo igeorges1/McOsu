@@ -33,6 +33,7 @@
 
 #include "OsuGameRules.h"
 #include "OsuGameRulesMania.h"
+#include "OsuTimingAudioHUD.h"
 
 #include "OsuScore.h"
 #include "OsuSongBrowser2.h"
@@ -99,6 +100,12 @@ ConVar osu_hud_hiterrorbar_entry_miss_height_multiplier("osu_hud_hiterrorbar_ent
 ConVar osu_hud_hiterrorbar_entry_misaim_height_multiplier("osu_hud_hiterrorbar_entry_misaim_height_multiplier", 4.0f, FCVAR_NONE);
 ConVar osu_hud_hiterrorbar_scale("osu_hud_hiterrorbar_scale", 1.0f, FCVAR_NONE);
 ConVar osu_hud_hiterrorbar_showmisswindow("osu_hud_hiterrorbar_showmisswindow", false, FCVAR_NONE);
+ConVar osu_hud_hiterrorbar_timing_audio("osu_hud_hiterrorbar_timing_audio", false, FCVAR_NONE);
+ConVar osu_hud_hiterrorbar_timing_audio_caption("osu_hud_hiterrorbar_timing_audio_caption", true, FCVAR_NONE);
+ConVar osu_hud_hiterrorbar_timing_audio_markers_only("osu_hud_hiterrorbar_timing_audio_markers_only", false, FCVAR_NONE);
+ConVar osu_hud_hiterrorbar_timing_audio_spread("osu_hud_hiterrorbar_timing_audio_spread", true, FCVAR_NONE);
+ConVar osu_hud_hiterrorbar_timing_audio_silent_band("osu_hud_hiterrorbar_timing_audio_silent_band", true, FCVAR_NONE);
+ConVar osu_hud_hiterrorbar_timing_audio_view("osu_hud_hiterrorbar_timing_audio_view", 0, FCVAR_NONE);
 ConVar osu_hud_hiterrorbar_width_percent_with_misswindow("osu_hud_hiterrorbar_width_percent_with_misswindow", 0.4f, FCVAR_NONE);
 ConVar osu_hud_hiterrorbar_width_percent("osu_hud_hiterrorbar_width_percent", 0.15f, FCVAR_NONE);
 ConVar osu_hud_hiterrorbar_height_percent("osu_hud_hiterrorbar_height_percent", 0.007f, FCVAR_NONE);
@@ -406,7 +413,7 @@ void OsuHUD::draw(Graphics *g)
 			if (osu_draw_hiterrorbar.getBool() && (beatmapStd == NULL || (!beatmapStd->isSpinnerActive() || !osu_hud_hiterrorbar_hide_during_spinner.getBool())) && !beatmap->isLoading())
 			{
 				if (beatmapStd != NULL)
-					drawHitErrorBar(g, OsuGameRules::getHitWindow300(beatmap), OsuGameRules::getHitWindow100(beatmap), OsuGameRules::getHitWindow50(beatmap), OsuGameRules::getHitWindowMiss(beatmap), m_osu->getScore()->getUnstableRate());
+					drawHitErrorBar(g, OsuGameRules::getHitWindow300(beatmap), OsuGameRules::getHitWindow100(beatmap), OsuGameRules::getHitWindow50(beatmap), OsuGameRules::getHitWindowMiss(beatmap), m_osu->getScore()->getUnstableRate(), beatmapStd);
 				else if (beatmapMania != NULL)
 					drawHitErrorBar(g, OsuGameRulesMania::getHitWindow300(beatmap), OsuGameRulesMania::getHitWindow100(beatmap), OsuGameRulesMania::getHitWindow50(beatmap), OsuGameRulesMania::getHitWindowMiss(beatmap), m_osu->getScore()->getUnstableRate());
 			}
@@ -442,7 +449,7 @@ void OsuHUD::draw(Graphics *g)
 			if (osu_draw_hiterrorbar.getBool() && (beatmapStd == NULL || (!beatmapStd->isSpinnerActive() || !osu_hud_hiterrorbar_hide_during_spinner.getBool())) && !beatmap->isLoading())
 			{
 				if (beatmapStd != NULL)
-					drawHitErrorBar(g, OsuGameRules::getHitWindow300(beatmap), OsuGameRules::getHitWindow100(beatmap), OsuGameRules::getHitWindow50(beatmap), OsuGameRules::getHitWindowMiss(beatmap), m_osu->getScore()->getUnstableRate());
+					drawHitErrorBar(g, OsuGameRules::getHitWindow300(beatmap), OsuGameRules::getHitWindow100(beatmap), OsuGameRules::getHitWindow50(beatmap), OsuGameRules::getHitWindowMiss(beatmap), m_osu->getScore()->getUnstableRate(), beatmapStd);
 				else if (beatmapMania != NULL)
 					drawHitErrorBar(g, OsuGameRulesMania::getHitWindow300(beatmap), OsuGameRulesMania::getHitWindow100(beatmap), OsuGameRulesMania::getHitWindow50(beatmap), OsuGameRulesMania::getHitWindowMiss(beatmap), m_osu->getScore()->getUnstableRate());
 			}
@@ -2271,13 +2278,83 @@ void OsuHUD::drawHitErrorBar(Graphics *g, OsuBeatmapStandard *beatmapStd)
 	if (osu_draw_hud.getBool() || !osu_hud_shift_tab_toggles_everything.getBool())
 	{
 		if (osu_draw_hiterrorbar.getBool() && (!beatmapStd->isSpinnerActive() || !osu_hud_hiterrorbar_hide_during_spinner.getBool()) && !beatmapStd->isLoading())
-			drawHitErrorBar(g, OsuGameRules::getHitWindow300(beatmapStd), OsuGameRules::getHitWindow100(beatmapStd), OsuGameRules::getHitWindow50(beatmapStd), OsuGameRules::getHitWindowMiss(beatmapStd), m_osu->getScore()->getUnstableRate());
+			drawHitErrorBar(g, OsuGameRules::getHitWindow300(beatmapStd), OsuGameRules::getHitWindow100(beatmapStd), OsuGameRules::getHitWindow50(beatmapStd), OsuGameRules::getHitWindowMiss(beatmapStd), m_osu->getScore()->getUnstableRate(), beatmapStd);
 	}
 }
 
-void OsuHUD::drawHitErrorBar(Graphics *g, float hitWindow300, float hitWindow100, float hitWindow50, float hitWindowMiss, int ur)
+static UString timingAudioLabel(const OsuTimingAudioView &view, float windowMapMS)
+{
+	using Evaluation = OsuTimingAudioEvaluation;
+	const auto &evaluation = view.evaluation;
+	switch (evaluation.phase)
+	{
+	case Evaluation::OFF: return "";
+	case Evaluation::WAITING: return "Timing audio | Waiting for gameplay";
+	case Evaluation::INVALID: return "Timing audio | Invalid reference or window";
+	default: break;
+	}
+	UString label = OsuTimingAudioView::name(view.mode);
+	label.append(evaluation.recent ? " | Recent ref" : " | Beatmap ref");
+	if (evaluation.phase == Evaluation::WARMUP) label.append(" | Warming up");
+	else if (evaluation.phase == Evaluation::GATED) label.append(" | 300 gate");
+	else if (evaluation.fixedFallback) label.append(" | Fixed fallback");
+	else if (!std::isfinite(evaluation.spreadMapMS.lower)) label.append(" | SD unavailable");
+	if (evaluation.output == Evaluation::MUTED) label.append(" | Muted");
+	if (std::abs(evaluation.referenceMapMS) > windowMapMS) label.append(" | Ref off bar");
+	return label;
+}
+
+void OsuHUD::drawHitErrorBar(Graphics *g, float hitWindow300, float hitWindow100, float hitWindow50, float hitWindowMiss, int ur, const OsuBeatmapStandard *beatmap)
 {
 	const Vector2 center = Vector2(m_osu->getScreenWidth()/2.0f, m_osu->getScreenHeight() - m_osu->getScreenHeight()*2.15f*osu_hud_hiterrorbar_height_percent.getFloat()*osu_hud_scale.getFloat()*osu_hud_hiterrorbar_scale.getFloat() - m_osu->getScreenHeight()*osu_hud_hiterrorbar_offset_percent.getFloat());
+	OsuTimingAudioEvaluation evaluation;
+	evaluation.phase = OsuTimingAudioEvaluation::OFF;
+	UString label;
+	if (beatmap != NULL)
+	{
+		if (m_timingAudioBeatmap != beatmap)
+		{
+			m_timingAudioBeatmap = beatmap;
+			m_timingAudioTransition = OsuTimingAudioHUD::Transition();
+		}
+		OsuTimingAudioView view;
+		view.evaluation.phase = OsuTimingAudioEvaluation::OFF;
+		if (osu_hud_hiterrorbar_timing_audio.getBool())
+			view = beatmap->getTimingAudioView(OsuTimingAudioView::fromSetting(osu_hud_hiterrorbar_timing_audio_view.getInt()));
+		const float window = osu_hud_hiterrorbar_showmisswindow.getBool() ? hitWindowMiss : hitWindow50;
+		evaluation = m_timingAudioTransition.present(view, window, engine->getTime());
+		if (osu_hud_hiterrorbar_timing_audio_caption.getBool())
+			label = timingAudioLabel(view, window);
+	}
+
+	const float alpha = osu_hud_hiterrorbar_alpha.getFloat();
+	const float hudScale = osu_hud_scale.getFloat() * osu_hud_hiterrorbar_scale.getFloat();
+	const float entryHeight = m_osu->getScreenHeight() * osu_hud_hiterrorbar_height_percent.getFloat()
+		* hudScale * osu_hud_hiterrorbar_bar_height_scale.getFloat();
+	// One upright caption even when several copies of the bar are enabled.
+	const auto drawLabel = [&](Vector2 anchor, Vector2 alignment)
+	{
+		if (alpha <= 0.0f || label.length() == 0 || hudScale <= 0.0f) return;
+		McFont *font = m_osu->getSongBrowserFont();
+		const float scale = std::min(0.55f * hudScale,
+			(m_osu->getScreenWidth() - 8.0f) / font->getStringWidth(label));
+		if (scale <= 0.0f) return;
+		const float width = font->getStringWidth(label) * scale;
+		const float height = font->getHeight() * scale;
+		const int x = (int)clamp<float>(anchor.x - alignment.x * width, 4, m_osu->getScreenWidth() - width - 4);
+		const int y = (int)clamp<float>(anchor.y + alignment.y * height, height + 4, m_osu->getScreenHeight() - 4);
+		g->setColor(0xff101010);
+		g->setAlpha(0.85f * alpha);
+		g->fillRect(x - 3, y - (int)std::ceil(height) - 2, (int)std::ceil(width) + 6, (int)std::ceil(height) + 5);
+		g->pushTransform();
+		g->scale(scale, scale);
+		g->translate(x, y);
+		g->setColor(0xffffffff);
+		g->setAlpha(alpha);
+		g->drawString(font, label);
+		g->popTransform();
+		label = "";
+	};
 
 	if (osu_draw_hiterrorbar_bottom.getBool())
 	{
@@ -2285,9 +2362,22 @@ void OsuHUD::drawHitErrorBar(Graphics *g, float hitWindow300, float hitWindow100
 		{
 			const Vector2 localCenter = Vector2(center.x, center.y - (m_osu->getScreenHeight() * osu_hud_hiterrorbar_offset_bottom_percent.getFloat()));
 
+			if (label.length() > 0)
+			{
+				float top = localCenter.y - entryHeight * 0.5f;
+				if (osu_draw_hiterrorbar_ur.getBool())
+				{
+					const float fontHeight = m_osu->getSongBrowserFont()->getHeight() * hudScale;
+					const float urOffset = fontHeight * osu_hud_hiterrorbar_ur_offset_y_percent.getFloat() * Osu::getUIScale(m_osu);
+					const float urTop = localCenter.y + urOffset - entryHeight / 1.25f
+						- fontHeight * osu_hud_hiterrorbar_ur_scale.getFloat() * 0.5f;
+					top = std::min(top, urTop);
+				}
+				drawLabel(Vector2(localCenter.x, top - 6), Vector2(0.5f, 0));
+			}
 			drawHitErrorBarInt2(g, localCenter, ur);
 			g->translate(localCenter.x, localCenter.y);
-			drawHitErrorBarInt(g, hitWindow300, hitWindow100, hitWindow50, hitWindowMiss);
+			drawHitErrorBarInt(g, hitWindow300, hitWindow100, hitWindow50, hitWindowMiss, evaluation);
 		}
 		g->popTransform();
 	}
@@ -2298,10 +2388,11 @@ void OsuHUD::drawHitErrorBar(Graphics *g, float hitWindow300, float hitWindow100
 		{
 			const Vector2 localCenter = Vector2(center.x, m_osu->getScreenHeight() - center.y + (m_osu->getScreenHeight() * osu_hud_hiterrorbar_offset_top_percent.getFloat()));
 
+			drawLabel(Vector2(localCenter.x, localCenter.y + entryHeight * 0.5f + 6), Vector2(0.5f, 1));
 			g->scale(1, -1);
 			//drawHitErrorBarInt2(g, localCenter, ur);
 			g->translate(localCenter.x, localCenter.y);
-			drawHitErrorBarInt(g, hitWindow300, hitWindow100, hitWindow50, hitWindowMiss);
+			drawHitErrorBarInt(g, hitWindow300, hitWindow100, hitWindow50, hitWindowMiss, evaluation);
 		}
 		g->popTransform();
 	}
@@ -2312,10 +2403,11 @@ void OsuHUD::drawHitErrorBar(Graphics *g, float hitWindow300, float hitWindow100
 		{
 			const Vector2 localCenter = Vector2(m_osu->getScreenHeight() - center.y + (m_osu->getScreenWidth() * osu_hud_hiterrorbar_offset_left_percent.getFloat()), m_osu->getScreenHeight()/2.0f);
 
+			drawLabel(Vector2(localCenter.x + entryHeight * 0.5f + 6, localCenter.y), Vector2(0, 0.5f));
 			g->rotate(90);
 			//drawHitErrorBarInt2(g, localCenter, ur);
 			g->translate(localCenter.x, localCenter.y);
-			drawHitErrorBarInt(g, hitWindow300, hitWindow100, hitWindow50, hitWindowMiss);
+			drawHitErrorBarInt(g, hitWindow300, hitWindow100, hitWindow50, hitWindowMiss, evaluation);
 		}
 		g->popTransform();
 	}
@@ -2326,17 +2418,53 @@ void OsuHUD::drawHitErrorBar(Graphics *g, float hitWindow300, float hitWindow100
 		{
 			const Vector2 localCenter = Vector2(m_osu->getScreenWidth() - (m_osu->getScreenHeight() - center.y) - (m_osu->getScreenWidth() * osu_hud_hiterrorbar_offset_right_percent.getFloat()), m_osu->getScreenHeight()/2.0f);
 
+			drawLabel(Vector2(localCenter.x - entryHeight * 0.5f - 6, localCenter.y), Vector2(1, 0.5f));
 			g->scale(-1, 1);
 			g->rotate(-90);
 			//drawHitErrorBarInt2(g, localCenter, ur);
 			g->translate(localCenter.x, localCenter.y);
-			drawHitErrorBarInt(g, hitWindow300, hitWindow100, hitWindow50, hitWindowMiss);
+			drawHitErrorBarInt(g, hitWindow300, hitWindow100, hitWindow50, hitWindowMiss, evaluation);
 		}
 		g->popTransform();
 	}
 }
 
-void OsuHUD::drawHitErrorBarInt(Graphics *g, float hitWindow300, float hitWindow100, float hitWindow50, float hitWindowMiss)
+static void drawTimingAudioGeometry(Graphics *g, const OsuTimingAudioHUD::Geometry &geometry, float barHeight, float alpha)
+{
+	const auto stroke = [=](int x, int y, int width, int height, Color color)
+	{
+		g->setColor(0xff101010);
+		g->setAlpha(alpha);
+		g->fillRect(x - 1, y - 1, width + 2, height + 2);
+		g->setColor(color);
+		g->setAlpha(alpha);
+		g->fillRect(x, y, width, height);
+	};
+	const int bandY = (int)std::ceil(barHeight / 2.0f) + 1;
+	if (geometry.silent.visible)
+	{
+		const int left = (int)std::round(geometry.silent.lower);
+		const int right = (int)std::round(geometry.silent.upper);
+		stroke(left, bandY, std::max(1, right - left), 3, 0xff8ef5e7);
+	}
+	if (geometry.showReference)
+	{
+		const int x = (int)std::round(geometry.reference);
+		stroke(x - 1, bandY + 4, 3, 4, 0xffffe097);
+	}
+	const int spreadY = -bandY - 4;
+	if (geometry.spread.visible)
+	{
+		const int left = (int)std::round(geometry.spread.lower);
+		const int right = (int)std::round(geometry.spread.upper);
+		stroke(left, spreadY, std::max(1, right - left), 1, 0xffffffff);
+		if (geometry.spread.showLowerCap) stroke(left, spreadY, 1, 4, 0xffffffff);
+		if (geometry.spread.showUpperCap && right != left) stroke(right, spreadY, 1, 4, 0xffffffff);
+	}
+	if (geometry.showMean) stroke((int)std::round(geometry.mean), spreadY - 3, 1, 4, 0xffffffff);
+}
+
+void OsuHUD::drawHitErrorBarInt(Graphics *g, float hitWindow300, float hitWindow100, float hitWindow50, float hitWindowMiss, const OsuTimingAudioEvaluation &evaluation)
 {
 	const float alpha = osu_hud_hiterrorbar_alpha.getFloat();
 	if (alpha <= 0.0f) return;
@@ -2393,6 +2521,14 @@ void OsuHUD::drawHitErrorBarInt(Graphics *g, float hitWindow300, float hitWindow
 
 		g->setColor(color300);
 		g->fillRect(center.x - size.x*percent300/2.0f, center.y - size.y/2.0f, size.x*percent300 * (half && !halfAllow300s ? 0.5f : 1.0f), size.y);
+	}
+
+	if (evaluation.phase != OsuTimingAudioEvaluation::OFF)
+	{
+		const bool markersOnly = osu_hud_hiterrorbar_timing_audio_markers_only.getBool();
+		drawTimingAudioGeometry(g, OsuTimingAudioHUD::project(evaluation, totalHitWindowLength, size.x / 2.0f,
+			!markersOnly && osu_hud_hiterrorbar_timing_audio_spread.getBool(),
+			!markersOnly && osu_hud_hiterrorbar_timing_audio_silent_band.getBool()), size.y, alpha);
 	}
 
 	// draw hit errors
@@ -3479,6 +3615,7 @@ void OsuHUD::selectVolumeNext()
 void OsuHUD::resetHitErrorBar()
 {
 	m_hiterrors.clear();
+	m_timingAudioTransition = OsuTimingAudioHUD::Transition();
 }
 
 McRect OsuHUD::getSkipClickRect()

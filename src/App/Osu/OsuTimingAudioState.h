@@ -6,6 +6,7 @@
 #include <cmath>
 #include <limits>
 #include <vector>
+#include "OsuTimingAudioEvaluation.h"
 #include "OsuTimingAudioReference.h"
 
 class OsuTimingAudioState
@@ -41,16 +42,22 @@ public:
 		double halfWidthMS;
 		double varianceMS2; // preceding population variance, before this hit
 		bool fixedFallback;
+		bool accepted;
 	};
 
 	OsuTimingAudioState() { reset(); }
 
 	void configure(const Config &config)
 	{
-		const bool changedEstimator = config.fixedHits != m_config.fixedHits
-			|| config.halfLifeSeconds != m_config.halfLifeSeconds || config.halfLifeHits != m_config.halfLifeHits;
+		const bool changedEstimator = wouldResetEstimator(config);
 		m_config = config;
 		if (changedEstimator) reset();
+	}
+
+	bool wouldResetEstimator(const Config &config) const
+	{
+		return config.fixedHits != m_config.fixedHits || config.halfLifeSeconds != m_config.halfLifeSeconds
+			|| config.halfLifeHits != m_config.halfLifeHits;
 	}
 
 	// Activities are scheduled objects, independent of successful judgements.
@@ -164,8 +171,63 @@ public:
 	double getVarianceMS2() const { return m_varianceMS2; }
 	double getActiveMS() const { return m_activeMS; }
 	unsigned long long getSamples() const { return m_samples; }
+	const OsuTimingAudioEvaluation &getLastEvaluation() const { return m_lastEvaluation; }
+	unsigned long long getGeneration() const { return m_generation; }
+
+	OsuTimingAudioEvaluation getCurrentEvaluation(Window window, bool recent, long double targetMapMS) const
+	{
+		return getCurrentEvaluation(window, recent, targetMapMS, m_config, false);
+	}
+
+	OsuTimingAudioEvaluation getCurrentEvaluation(Window window, bool recent, long double targetMapMS,
+		const Config &config, bool pendingReset) const
+	{
+		if (!std::isfinite(window.speed) || window.speed <= 0.0) return invalidEvaluation(recent);
+		const volatile double window300MS = window.mapMS / window.speed;
+		if (!std::isfinite(window300MS) || window300MS < 0.0) return invalidEvaluation(recent);
+
+		Result current = {SILENT, pendingReset ? 0.0 : m_baselineMS, 0, pendingReset ? 0 : m_samples,
+			0, pendingReset ? 0.0 : m_varianceMS2, false, false};
+		long double mapHalfWidthMS = 0;
+		const volatile double halfWidthMS = bandHalfWidth(window, config, current, mapHalfWidthMS);
+		current.halfWidthMS = halfWidthMS;
+		const auto evaluation = describeEvaluation(current, recent, isReady(config, recent, current.precedingSamples),
+			isInside300(config, window300MS, current), window.speed, targetMapMS, mapHalfWidthMS);
+		return evaluation.phase == OsuTimingAudioEvaluation::INVALID ? invalidEvaluation(recent) : evaluation;
+	}
+
+	void projectNextHit(OsuTimingAudioEvaluation &evaluation, double speed, bool atReference) const
+	{
+		// Hypothetical update of local scalars. Opportunity-based gap handling,
+		// eligibility, judgement and cue playback still belong to a real hit.
+		if (m_samples == 0 || evaluation.phase == OsuTimingAudioEvaluation::INVALID
+			|| !std::isfinite(speed) || speed <= 0) return;
+		const double assumedErrorMS = atReference && !evaluation.recent ? evaluation.referenceMapMS / speed : m_baselineMS;
+		if (!std::isfinite(assumedErrorMS)) return;
+		double variance = m_varianceMS2;
+		const double mean = blend(m_baselineMS, variance, assumedErrorMS, m_activeMS - m_lastSampleMS);
+		evaluation.setStatistics(m_samples + 1, mean, variance, speed);
+	}
 
 private:
+	static bool isReady(const Config &config, bool recent, unsigned long long samples)
+	{
+		return !recent || (samples > 0 && (!config.silentStartup || samples >= 8));
+	}
+
+	static bool isInside300(const Config &config, double window300MS, const Result &result)
+	{
+		return !config.require300 || (result.precedingSamples > 0 && std::abs(result.baselineMS) <= window300MS);
+	}
+
+	static OsuTimingAudioEvaluation invalidEvaluation(bool recent)
+	{
+		OsuTimingAudioEvaluation evaluation;
+		evaluation.phase = OsuTimingAudioEvaluation::INVALID;
+		evaluation.recent = recent;
+		return evaluation;
+	}
+
 	Result sampleInternal(double errorMS, Window window, bool recent, double opportunityMS, double beatmapDeviationMS,
 		bool mapComparison, double errorMapMS, long double targetMapMS)
 	{
@@ -196,7 +258,7 @@ private:
 			}
 		}
 		Result result = {SILENT, m_baselineMS, recent ? errorMS - m_baselineMS : beatmapDeviationMS,
-			m_samples, m_config.deadZoneMS, m_varianceMS2, false};
+			m_samples, m_config.deadZoneMS, m_varianceMS2, false, false};
 		if (m_config.bandMode != FIXED_MS)
 		{
 			// New widths and deviations use the same stored-double comparison,
@@ -205,14 +267,18 @@ private:
 			result.deviationMS = deviationMS;
 		}
 		if (!std::isfinite(errorMS) || !std::isfinite(window300MS) || window300MS < 0.0
-			|| !std::isfinite(window.speed) || window.speed <= 0.0) return result;
+			|| !std::isfinite(window.speed) || window.speed <= 0.0)
+		{
+			m_lastEvaluation = invalidEvaluation(recent);
+			return result;
+		}
 		// i686 x87 may keep a product's excess precision across an inline return.
 		// Compare the stored double width exposed by Result, including its boundary.
 		long double mapHalfWidthMS = 0;
-		const volatile double halfWidthMS = bandHalfWidth(window, result.fixedFallback, mapHalfWidthMS);
+		const volatile double halfWidthMS = bandHalfWidth(window, m_config, result, mapHalfWidthMS);
 		result.halfWidthMS = halfWidthMS;
-		const bool ready = !recent || (m_samples > 0 && (!m_config.silentStartup || m_samples >= 8));
-		const bool inside300 = !m_config.require300 || (m_samples > 0 && std::abs(m_baselineMS) <= window300MS);
+		const bool ready = isReady(m_config, recent, result.precedingSamples);
+		const bool inside300 = isInside300(m_config, window300MS, result);
 		if (ready && inside300)
 		{
 			if (recent || (mapComparison && (m_config.bandMode != FIXED_MS || targetMapMS != 0)))
@@ -250,7 +316,44 @@ private:
 		m_baselineMS = blend(m_baselineMS, m_varianceMS2, errorMS, m_activeMS - m_lastSampleMS);
 		++m_samples;
 		m_lastSampleMS = m_activeMS;
+		result.accepted = true;
+		m_lastEvaluation = describeEvaluation(result, recent, ready, inside300, window.speed, targetMapMS, mapHalfWidthMS);
 		return result;
+	}
+
+	static OsuTimingAudioEvaluation describeEvaluation(const Result &result, bool recent, bool ready, bool inside300,
+		double speed, long double targetMapMS, long double mapHalfWidthMS)
+	{
+		using Evaluation = OsuTimingAudioEvaluation;
+		Evaluation evaluation;
+		evaluation.recent = recent;
+		evaluation.fixedFallback = result.fixedFallback;
+		const double meanMapMS = result.baselineMS * speed;
+		evaluation.setStatistics(result.precedingSamples, result.baselineMS, result.varianceMS2, speed);
+		if (!recent || result.precedingSamples > 0)
+			evaluation.referenceMapMS = recent ? meanMapMS : OsuTimingAudioReference::stored(targetMapMS);
+
+		if (!(recent ? std::isfinite(meanMapMS) : std::isfinite(targetMapMS)))
+			evaluation.phase = Evaluation::INVALID;
+		else if (!ready)
+			evaluation.phase = Evaluation::WARMUP;
+		else if (!inside300)
+			evaluation.phase = Evaluation::GATED;
+		else
+		{
+			evaluation.phase = Evaluation::ACTIVE;
+			if (recent)
+			{
+				const auto band = OsuTimingAudioReference::band(result.baselineMS, result.halfWidthMS);
+				evaluation.silentMapMS = {band.lower * speed, band.upper * speed};
+			}
+			else
+			{
+				const auto band = OsuTimingAudioReference::band(targetMapMS, mapHalfWidthMS);
+				evaluation.silentMapMS = {band.lower, band.upper};
+			}
+		}
+		return evaluation;
 	}
 
 	static long double fractionalMapWidth(Window window, long double fraction)
@@ -260,22 +363,22 @@ private:
 		return fraction * window.mapMS;
 	}
 
-	double bandHalfWidth(Window window, bool &fallback, long double &mapWidth) const
+	static double bandHalfWidth(Window window, const Config &config, Result &result, long double &mapWidth)
 	{
-		mapWidth = static_cast<long double>(m_config.deadZoneMS) * window.speed;
-		if (m_config.bandMode == FIXED_MS) return m_config.deadZoneMS;
-		if (m_config.bandMode == RELATIVE_300)
+		mapWidth = static_cast<long double>(config.deadZoneMS) * window.speed;
+		if (config.bandMode == FIXED_MS) return config.deadZoneMS;
+		if (config.bandMode == RELATIVE_300)
 		{
-			const long double candidate = fractionalMapWidth(window, m_config.relativeFraction);
+			const long double candidate = fractionalMapWidth(window, config.relativeFraction);
 			const double width = OsuTimingAudioReference::stored(candidate / window.speed);
 			if (std::isfinite(width) && width >= 0.0) { mapWidth = candidate; return width; }
 		}
-		else if (m_config.bandMode == ADAPTIVE_SPREAD && m_samples >= 2
-			&& std::isfinite(m_varianceMS2) && m_varianceMS2 >= 0.0)
+		else if (config.bandMode == ADAPTIVE_SPREAD && result.precedingSamples >= 2
+			&& std::isfinite(result.varianceMS2) && result.varianceMS2 >= 0.0)
 		{
-			const long double low = fractionalMapWidth(window, m_config.adaptiveMinFraction);
-			const long double high = fractionalMapWidth(window, m_config.adaptiveMaxFraction);
-			const long double width = m_config.adaptiveScale * std::sqrt(m_varianceMS2) * window.speed;
+			const long double low = fractionalMapWidth(window, config.adaptiveMinFraction);
+			const long double high = fractionalMapWidth(window, config.adaptiveMaxFraction);
+			const long double width = config.adaptiveScale * std::sqrt(result.varianceMS2) * window.speed;
 			if (std::isfinite(low) && std::isfinite(high) && std::isfinite(width)
 				&& low >= 0.0 && high >= low && width >= 0.0)
 			{
@@ -283,8 +386,8 @@ private:
 				return mapWidth / window.speed;
 			}
 		}
-		fallback = true;
-		return m_config.deadZoneMS;
+		result.fixedFallback = true;
+		return config.deadZoneMS;
 	}
 
 	void blendVariance(double &variance, double mean, double error, double alpha) const
@@ -326,8 +429,19 @@ private:
 		m_qualifiedGaps[m_gapIndex] = true;
 		if (m_config.restartAfterBreak) restartBaseline();
 	}
-	void restartBaseline() { m_baselineMS = 0.0; m_varianceMS2 = 0.0; m_samples = 0; m_lastSampleMS = m_activeMS; m_haveGapCorrection = false; }
+	void restartBaseline()
+	{
+		m_baselineMS = 0.0;
+		m_varianceMS2 = 0.0;
+		m_samples = 0;
+		m_lastSampleMS = m_activeMS;
+		m_haveGapCorrection = false;
+		m_lastEvaluation = OsuTimingAudioEvaluation();
+		++m_generation;
+	}
 	Config m_config;
+	OsuTimingAudioEvaluation m_lastEvaluation;
+	unsigned long long m_generation = 0;
 	std::vector<Activity> m_gaps;
 	std::vector<bool> m_qualifiedGaps;
 	double m_baselineMS, m_activeMS, m_lastSampleMS, m_lastMapMS, m_gapElapsedMS, m_speed;

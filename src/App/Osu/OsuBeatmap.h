@@ -12,6 +12,7 @@
 
 #include "OsuScore.h"
 #include "OsuDatabaseBeatmap.h"
+#include "OsuTimingAudioEvaluation.h"
 
 class Sound;
 class ConVar;
@@ -84,6 +85,7 @@ public:
 
 	// music/sound
 	void reloadTimingAudioSounds();
+	OsuTimingAudioView getTimingAudioView(OsuTimingAudioView::Mode mode) const;
 	void unloadMusic() {unloadMusicInt();}
 	void setVolume(float volume);
 	void setSpeed(float speed);
