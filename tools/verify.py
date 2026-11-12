@@ -143,6 +143,24 @@ class Run:
         self.record["input_sha256"] = self.hashes
         self.record["input_tree_sha256"] = hashlib.sha256(canonical(self.hashes)).hexdigest()
         self.record["regression"] = manifest
+        # Legacy MinGW resolves include paths through MAX_PATH-limited APIs even
+        # when argv is relative. Keep native compilation in a shallow staging
+        # layout; the full immutable source snapshot remains the evidence.
+        require(len(str(self.out)) <= 220, "GCC8 path limit: use a shallower source checkout (run cwd must be <=220 characters)")
+        stages = {"h": self.snapshot / "src/App/Osu",
+                  "o": fixture / "old", "f": fixture / "fixed"}
+        self.record["staged_headers"] = {}
+        for folder, origin in stages.items():
+            target = self.out / folder
+            target.mkdir()
+            for header in origin.glob("*.h"):
+                shutil.copyfile(header, target / header.name)
+                self.record["staged_headers"][folder + "/" + header.name] = digest(target / header.name)
+        (self.out / "g").mkdir()
+        shutil.copyfile(self.snapshot / "tests/verification/ConsoleCheckAssertions.h", self.out / "g/ConsoleCheckAssertions.h")
+        shutil.copyfile(self.snapshot / "tests/verification/PrerollHistory.cpp", self.out / "case.cpp")
+        for name in ("g/ConsoleCheckAssertions.h", "case.cpp"):
+            self.record["staged_headers"][name] = digest(self.out / name)
         self.save()
         toolchain = Path(self.args.toolchain).resolve()
         self.compiler = toolchain / "bin/g++.exe"
@@ -166,7 +184,12 @@ class Run:
     def compile(self, label, source, extra=()):
         # Neutral name avoids Windows Setup/installer detection heuristics.
         executable = self.out / (label.replace("Setup", "Readout") + ".exe")
-        self.command(label + "-compile", [self.compiler, *FLAGS, *extra, source, "-o", executable], self.args.compile_timeout)
+        # GCC8's Win32 file APIs reject long absolute include paths. Every owned
+        # compile input/output is below cwd; keep compiler arguments relative.
+        def relative(value):
+            return str(value.relative_to(self.out)) if isinstance(value, Path) else value
+        self.command(label + "-compile", [self.compiler, *FLAGS, *map(relative, extra),
+                                         relative(source), "-o", relative(executable)], self.args.compile_timeout)
         require(executable.is_file() and executable.stat().st_size > 0, "Compiler produced no executable")
         return executable
 
@@ -179,37 +202,37 @@ class Run:
             text = text.replace("int main()", "int verification_test_body()", 1)
             # Replace cassert only; custom CHECK macros stay exactly as authored.
             text = text.replace("#include <cassert>", "")
+            text = text.replace('"../src/App/Osu/', '"../h/')
             include_end = max(m.end() for m in re.finditer(r'^#include[^\n]*', text, re.MULTILINE))
-            guard = '\n#include "../verification/ConsoleCheckAssertions.h"\n'
+            guard = '\n#include "../g/ConsoleCheckAssertions.h"\n'
             text = text[:include_end] + guard + text[include_end:]
             end = text.rfind("}")
             text = text[:end] + "\nreturn 0;\n" + text[end:]
             text += f'\nint main() {{ const int result = verification_test_body(); if (result == 0) std::puts("COMPLETE {suite} failures=0"); return result; }}\n'
-            generated = self.snapshot / "tests/generated" / (suite + ".cpp")
+            generated = self.out / "t" / (suite.removeprefix("OsuTimingAudio").removesuffix("Test") + ".cpp")
             generated.parent.mkdir(exist_ok=True)
             # Relative original product paths are resolved using the original tests cwd include directory.
             generated.write_text(text, encoding="utf-8", newline="\n")
             self.record.setdefault("generated_tests", {})[suite] = {
                 "original_sha256": self.hashes["tests/" + suite + ".cpp"],
                 "generated_sha256": digest(generated), "path": str(generated),
-                "transformation": "Remove cassert include; guard after all includes; rename main; append return 0 and completion wrapper"}
+                "transformation": "Relocate product includes; remove cassert include; guard after all includes; rename main; append return 0 and completion wrapper"}
             self.save()
-            executable = self.compile(suite, generated, ["-I", self.snapshot / "tests", "-I", self.snapshot / "tests/generated"])
+            executable = self.compile(suite, generated)
             self.command(suite, [executable], self.args.test_timeout, marker=f"COMPLETE {suite} failures=0")
         self.command("settings-inventory", [sys.executable, "-B", self.snapshot / "tests/check-timing-audio-settings.py"],
                      self.args.test_timeout, marker="PASS: 30 audio settings and 71 HUD settings match registration and tracked reference")
 
     def regression(self):
-        support = self.snapshot / "tests/verification"
         for label in ("old", "fixed", "current"):
-            include = support / "preroll-history" / label if label != "current" else self.snapshot / "src/App/Osu"
-            flags = ["-I", include, "-I", support]
+            include = self.out / {"old": "o", "fixed": "f", "current": "h"}[label]
+            flags = ["-I", include, "-I", self.out / "g"]
             if label == "old":
                 flags += ["-DHISTORICAL_API"]
             elif label == "fixed":
                 flags += ["-DFIXED_API"]
             name = CASE + "-" + label
-            executable = self.compile(name, support / "PrerollHistory.cpp", flags)
+            executable = self.compile(name, self.out / "case.cpp", flags)
             self.command(name, [executable], self.args.test_timeout,
                          expected=1 if label == "old" else 0,
                          marker=None if label == "old" else "COMPLETE preroll-history failures=0",
@@ -219,6 +242,7 @@ class Run:
 
     def finish(self):
         require(all(digest(ROOT / path) == value for path, value in self.hashes.items()), "Source inputs changed during run")
+        require(all(digest(self.out / path) == value for path, value in self.record["staged_headers"].items()), "Staged compile inputs changed during run")
         require(self.record["checks"], "No executed checks")
         self.record.update(complete=True, result="PASS")
         self.save()

@@ -23,6 +23,11 @@ Keep the complete toolchain, including its runtime DLLs. Caller compiler include
 library injection variables are removed. Flags are C++11, `-O2 -Wall -Wextra
 -Werror -pedantic -UNDEBUG`; compiler version/target/thread/exception probes are
 required and bounded. Python `-O` is refused; inventory assertions must execute.
+Native compile inputs use shallow run-owned staging folders and relative argv
+to avoid legacy GCC8 path limits. Exact source snapshots remain intact; staged
+header and generated test hashes are recorded. The run cwd must be at most 220
+characters; deeper checkouts fail preflight with a request for a shallower path.
+The receipt records effective arguments with the absolute cwd/input identities.
 
 Preflight requires exactly the eight registered nonempty suite files, inventory,
 control reference, production header dependencies and complete historical fixture
@@ -115,7 +120,8 @@ Tests and inventory run from the snapshot, avoiding edits halfway through a run;
 the runner also rejects changed source inputs before marking success.
 
 Assertions remain enabled. Generated suite copies preserve original test bodies:
-only `cassert` includes are replaced by the portable guard **after all includes**,
+only product include paths are relocated to staged exact headers, `cassert`
+includes are replaced by the portable guard **after all includes**,
 `main` is renamed, its implicit successful return is made explicit, and a wrapper
 emits completion after it returns zero. Original and generated hashes/files are
 retained. Existing custom CHECK/negative checks remain enabled. Exit zero without

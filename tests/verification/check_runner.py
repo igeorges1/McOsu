@@ -3,6 +3,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+import shutil
 import sys
 
 # This script runs from the runner's immutable source snapshot.
@@ -20,6 +21,8 @@ def main():
     receipts = []
 
     def process(label, argv, timeout=15):
+        argv = [str(a.relative_to(args.out)) if index > 0 and isinstance(a, Path) and a.is_relative_to(args.out) else a
+                for index, a in enumerate(argv)]
         result = execute(argv, args.out, os.environ.copy(), timeout,
                          args.out / (label + ".stdout"), args.out / (label + ".stderr"))
         result["label"] = label
@@ -45,10 +48,11 @@ def main():
 
     # 3: the promoted assertion guard really exits nonmodally with enabled assert.
     guard = Path(__file__).resolve().parent / "ConsoleCheckAssertions.h"
+    shutil.copyfile(guard, args.out / guard.name)
     assertion = args.out / "assertion.cpp"
-    assertion.write_text('#include <vector>\n#include <cassert>\n#include "' + guard.as_posix() + '"\nint main() { assert(false); }\n', encoding="utf-8")
+    assertion.write_text('#include <vector>\n#include <cassert>\n#include "ConsoleCheckAssertions.h"\nint main() { assert(false); }\n', encoding="utf-8")
     binary = args.out / "assertion-probe.exe"
-    result = process("assert-compile", [args.compiler, *FLAGS, assertion, "-o", binary], 30)
+    result = process("assert-compile", [args.compiler, *FLAGS, "-I", ".", assertion, "-o", binary], 30)
     assert result["exit"] == 0 and not result["timeout"]
     result = process("assert-run", [binary])
     assert result["exit"] == 1 and not result["timeout"] and "VERIFICATION_ASSERT" in contents(result, "stderr")
