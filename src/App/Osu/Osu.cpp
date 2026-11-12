@@ -1876,7 +1876,12 @@ void Osu::markTimingCapture()
 	const UString root = "timing-captures";
 	if (!env->directoryExists(root) && !env->createDirectory(root))
 		return fail("Could not create timing-captures.");
-	if (env->getFoldersInFolder(root).size() >= 12)
+	// The Windows environment appends its search wildcard directly to the path.
+	const auto children = env->getFoldersInFolder(UString::format("%s/", root.toUtf8()));
+	const auto count = std::count_if(children.begin(), children.end(), [](const UString &name) {
+		return name != "." && name != "..";
+	});
+	if (count >= 12)
 		return fail("Timing capture quota reached. Move old capture folders to keep recording.");
 	UString directory;
 	const long long stamp = std::time(NULL);
