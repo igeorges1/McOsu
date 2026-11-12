@@ -1,0 +1,2 @@
+# These are exact git-show bytes, verified against manifest.json on every run.
+*.h -text
