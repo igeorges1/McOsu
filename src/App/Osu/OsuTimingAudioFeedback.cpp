@@ -32,7 +32,7 @@ ConVar osu_timing_audio_deadzone_adaptive_min("osu_timing_audio_deadzone_adaptiv
 ConVar osu_timing_audio_deadzone_adaptive_max("osu_timing_audio_deadzone_adaptive_max", 1.0f, FCVAR_NONE, "Adaptive maximum half-width as a fraction of the current 300 half-window.");
 ConVar osu_timing_audio_adaptive_startup_maximum("osu_timing_audio_adaptive_startup_maximum", false, FCVAR_NONE, "Use the adaptive maximum for the first two accepted hits. Off uses fixed width.");
 ConVar osu_timing_audio_idle_forgiveness("osu_timing_audio_idle_forgiveness", false, FCVAR_NONE, "Widen the learned adaptive band toward its configured maximum during counted play without accepted hits.");
-ConVar osu_timing_audio_idle_grace_seconds("osu_timing_audio_idle_grace_seconds", 1.0f, FCVAR_NONE, "Counted-play seconds before the band starts widening (0-60).");
+ConVar osu_timing_audio_idle_grace_seconds("osu_timing_audio_idle_grace_seconds", 1.0f, FCVAR_NONE, "Counted-play seconds before widening. Zero allows widening as soon as counted time advances.");
 ConVar osu_timing_audio_idle_ramp_seconds("osu_timing_audio_idle_ramp_seconds", 3.0f, FCVAR_NONE, "Counted-play seconds to ramp from zero allowance to the cap (0-60). Zero widens to cap after grace.");
 ConVar osu_timing_audio_idle_recovery_hits("osu_timing_audio_idle_recovery_hits", 4, FCVAR_NONE, "Accepted hits to remove full idle allowance (1-128). A hit uses the width before its recovery step.");
 ConVar osu_timing_audio_volume("osu_timing_audio_volume", 0.2f, FCVAR_NONE, "Independent cue gain, multiplied by master volume. Effects/hitsound volume does not mute it. Zero mutes while learning.");

@@ -93,6 +93,7 @@ private:
 		std::vector<CBaseUIElement*> elements;
 		ConVar *cvar;
 		int type;
+		const char *timingHudHelp = NULL;
 
 		float label1Width;
 		float relSizeDPI;
@@ -362,6 +363,7 @@ private:
 		const OsuTimingAudioSettings::Spec *spec;
 		CBaseUICheckbox *checkbox;
 		CBaseUITextbox *textbox;
+		CBaseUILabel *label;
 	};
 	std::vector<TimingAudioField> m_timingAudioFields;
 	OsuUIButton *m_timingAudioViewButton = NULL;

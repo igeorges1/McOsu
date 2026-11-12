@@ -1897,8 +1897,21 @@ void OsuOptionsMenu::updateLayout()
 						if (m_elements[i].allowUnderscale && m_elements[i].cvar->getFloat() < sliderPointer->getMin())
 							sliderPointer->setBounds(m_elements[i].cvar->getFloat(), sliderPointer->getMax());
 
-						sliderPointer->setValue(m_elements[i].cvar->getFloat(), false);
-						sliderPointer->fireChangeCallback();
+							if (m_elements[i].timingHudHelp != NULL)
+							{
+								// Layout and search can rebuild every row. Refresh the label without
+								// applying slider rounding or clamping to a saved console value.
+								auto *label = static_cast<CBaseUILabel*>(m_elements[i].elements[2]);
+								const auto *var = m_elements[i].cvar;
+								sliderPointer->setInitialValue(var->getFloat());
+								const bool percent = sliderPointer == m_hudHiterrorbarScaleSlider || sliderPointer == m_hudHiterrorbarURScaleSlider;
+								label->setText(percent ? UString::format("%.0f%%", 100.0 * var->getFloat()) : var->getString());
+							}
+							else
+							{
+								sliderPointer->setValue(m_elements[i].cvar->getFloat(), false);
+								sliderPointer->fireChangeCallback();
+							}
 					}
 				}
 			}
