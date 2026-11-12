@@ -17,11 +17,13 @@ public:
 	void reset();
 	void reloadSounds();
 	void pause();
+	void suspendRecentWindow();
 	void onManualHit(long opportunityMS, long delta);
 	OsuTimingAudioEvaluation getLastEvaluation() const;
 	OsuTimingAudioView getCurrentView(OsuTimingAudioView::Mode mode) const;
 
 private:
+	bool needsActivities(const OsuTimingAudioState::Config &config, bool excludeActivity) const;
 	void loadCue(Sound *&sound, UString &attemptedPath, const UString &path);
 	OsuBeatmap *m_beatmap;
 	OsuTimingAudioState m_state;

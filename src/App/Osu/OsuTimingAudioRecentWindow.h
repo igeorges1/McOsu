@@ -41,9 +41,10 @@ public:
 			m_entries.pop_front();
 	}
 
-	void record(double errorMS)
+	void recordAcceptedHit(double errorMS)
 	{
-		if (!m_playing || !std::isfinite(errorMS)) return;
+		// Accepted pre-roll hits share the playback start timestamp.
+		if (!std::isfinite(errorMS)) return;
 		if (m_entries.size() == 2048) m_entries.pop_front();
 		m_entries.push_back({m_playSeconds, errorMS});
 	}
