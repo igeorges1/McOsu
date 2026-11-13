@@ -47,7 +47,7 @@ python tools/verify.py --toolchain C:/dependencies/mingw32 --case preroll-histor
 This selects **only three case compile/run pairs**, after common input/dependency
 preflight. It does not run the nine suites or settings inventory. Both commands
 return zero only after every selected check completes successfully. A successful
-full profile records 26 direct child checks (3 compiler probes, 16 suite compile/
+full profile records 28 direct child checks (3 compiler probes, 18 suite compile/
 run checks, 1 inventory, 6 case compile/run checks). A selected case records 9.
 
 `preroll-history` reproduces the historical **accepted ready pre-roll omitted**
