@@ -36,7 +36,7 @@ namespace OsuTimingCuePresentation
 		Rect rect;
 		if (!side || width < 1 || height < 1 || !std::isfinite(playfieldEdge)) return rect;
 		const double available = side < 0 ? playfieldEdge : width - playfieldEdge;
-		const int margin = static_cast<int>(std::max(0.0, std::min(width * 0.25, available)));
+		const int margin = static_cast<int>(std::max(0.0, std::min<double>(width, available)));
 		const int inset = std::min(margin, static_cast<int>(width * insetFraction));
 		rect.width = std::min(margin - inset, std::max(1, static_cast<int>(width * widthFraction)));
 		rect.height = std::min(height, std::max(1, static_cast<int>(height * heightFraction)));

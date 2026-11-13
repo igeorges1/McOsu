@@ -43,4 +43,11 @@ int main()
 	assert(Cue::margin(-1, 1280, 720, 0, .05, .4, .01, .25).width == 0);
 	assert(Cue::margin(1, 800, 1000, 775, .10, 1, 0, 1).width == 25);
 	assert(Cue::margin(1, 800, 1000, 0, .10, 1, 0, 1).width == 80);
+	for (int side : {-1, 1})
+	{
+		const auto overlap = Cue::margin(side, 800, 600, side < 0 ? 800 : 0, .125, .4, .15f, .5);
+		assert(overlap.width == 100 && overlap.x == (side < 0 ? 120 : 580));
+		const auto confined = Cue::margin(side, 800, 600, side < 0 ? 140 : 660, .125, .4, .15f, .5);
+		assert(confined.width == 20 && confined.x == (side < 0 ? 120 : 660));
+	}
 }
