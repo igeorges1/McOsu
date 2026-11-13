@@ -91,7 +91,7 @@ case deliberately claims only the history seam.
 | `OsuTimingAudioSettingsTest` | Schema, config retention and profile parser | Validation, exact decimal/Unicode roundtrip and negative inputs |
 | `OsuTimingAudioSetupTest` | Applied setup formatting | State/readout text; executable renamed `Readout` to avoid installer detection |
 | `OsuTimingAudioIdleTest` | Idle/startup/recovery policy and shared clock | Numeric/state policy, not player usefulness |
-| `settings-inventory` | Registration ↔ metadata ↔ generated reference | Exact 30 audio/71 HUD registration, defaults/ranges/reference correspondence |
+| `settings-inventory` | Registration ↔ metadata ↔ generated reference | Audio, HUD and capture registration, defaults/ranges/reference correspondence |
 | `preroll-history` | Frozen/current production RecentWindow | Exact RED/fixed/current GREEN as above |
 
 The [timing system map](timing-audio.md) and [generated controls](timing-audio-controls.md)
@@ -100,8 +100,10 @@ registration together when adding/removing tests. Product behavior is unchanged.
 Other boundaries, including production adapters, framebuffer probes, device/audio
 and human play, retain their separate evidence and limits.
 
-The independent [runtime tooling workflow](https://github.com/igeorges1/McOsu/blob/c977662847c422b2f435774897a18a702bc0a690/tools/runtime/README.md) already has
+The independent [runtime tooling workflow](https://github.com/igeorges1/McOsu/blob/3c69a2a4e374a24bda8a3c9574e772ab85241b30/tools/runtime/README.md) already has
 its own supported tests: `python -m unittest discover -s tools/runtime/tests -v`.
+Run that separate command from the matching complete tooling checkout, not this
+game-stack checkout; runtime product files are not duplicated here.
 It is separate from this profile and is not rerun here. Profiles are a small
 explicit dispatch in `tools/verify.py`, not automatic discovery of arbitrary code.
 
@@ -173,3 +175,4 @@ recipes **for the coverage in this map**. Those original experiments and logs
 remain historical evidence. Reuse is established by independent clean-checkout
 execution from this guide plus the explicit compiler input; no time-savings or
 general gameplay reproducibility claim follows.
+For an exported live timing report, use [capture replay](timing-capture.md#reproduce-a-marked-sequence) with the same toolchain and the exact clean source named in the report.

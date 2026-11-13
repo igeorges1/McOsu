@@ -8,6 +8,8 @@
 #ifndef OSUBEATMAP_H
 #define OSUBEATMAP_H
 
+#include <iosfwd>
+
 #include "cbase.h"
 
 #include "OsuScore.h"
@@ -86,6 +88,9 @@ public:
 	// music/sound
 	void reloadTimingAudioSounds();
 	OsuTimingAudioView getTimingAudioView(OsuTimingAudioView::Mode mode, double recentSeconds = 5, bool includeCueStatus = false) const;
+	bool writeTimingCapture(std::ostream &out, const std::string &source, const std::string &map,
+		const std::string &metadata, double recentSeconds, bool &sufficient);
+	unsigned long long getTimingCaptureEpoch() const;
 	void unloadMusic() {unloadMusicInt();}
 	void setVolume(float volume);
 	void setSpeed(float speed);

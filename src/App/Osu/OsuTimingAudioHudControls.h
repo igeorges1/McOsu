@@ -5,13 +5,17 @@
 
 namespace OsuTimingAudioHudControls
 {
-	enum Group { TIMING, APPEARANCE, BAR };
-	enum Kind { Toggle, View, Decimal, Precise, Integer, BarScale, URScale };
+	enum Group { CAPTURE, TIMING, APPEARANCE, BAR };
+	enum Kind { Toggle, View, Decimal, Precise, Integer, BarScale, URScale, CaptureKey };
 	struct Control { const char *name, *label; Group group; Kind kind; double min, max; const char *help; };
 
 	inline const std::vector<Control> &controls()
 	{
 		static const std::vector<Control> list = {
+			{"osu_timing_capture_enabled", "Capture timing debug evidence", CAPTURE, Toggle, 0, 1, "Opt-in local recording. Enable before retrying or starting a map for a replayable prefix."},
+			{"osu_timing_capture_screenshot", "Save screenshot when marking a problem", CAPTURE, Toggle, 0, 1, "Saves a separate gameplay frame on the next draw. The timing report can be used without a screenshot."},
+			{"osu_timing_capture_mark_key", "Mark problem key", CAPTURE, CaptureKey, 0, 0, "Choose an unused key for standard play, or use the Mark problem button. Zero is unbound."},
+
 			{"osu_hud_hiterrorbar_timing_audio", "Timing audio on hit error bar", TIMING, Toggle, 0, 1, "Needs timing audio and a visible hit error bar."},
 			{"osu_hud_hiterrorbar_timing_audio_caption", "Timing status caption", TIMING, Toggle, 0, 1, "Show view, reference and availability above the bar."},
 			{"osu_hud_hiterrorbar_timing_audio_markers_only", "Timing markers only", TIMING, Toggle, 0, 1, "Hide both intervals. The mean and reference tick switches still apply."},

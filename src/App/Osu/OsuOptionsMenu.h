@@ -122,6 +122,7 @@ private:
 	void addTimingAudioOptions();
 	OsuTimingAudioView appliedTimingAudioView(const OsuTimingAudioSettings::Values &applied) const;
 	void onCopyTimingAudioSetup();
+	void onMarkTimingCapture();
 	void onTimingHudPreciseSlider(CBaseUISlider *slider);
 	void updateSliderValue(CBaseUISlider *slider, float precision);
 	void syncTimingAudio(const OsuTimingAudioSettings::Values &values);

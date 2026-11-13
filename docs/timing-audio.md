@@ -2,6 +2,8 @@
 
 Open **Options → Timing Audio Experiment**, the first section. **Applied Timing Setup** reports the game's current values. The [control reference](timing-audio-controls.md) lists every experiment setting and inherited bar control with its exact key, default, range, and persistence. Configurable timing is implemented in the source revision containing this map. Deployment and player acceptance are recorded separately with the build revision.
 
+The optional [live timing debug capture](timing-capture.md) records the timing model inputs and observed results at the adapter boundary. A mark saves a bounded prefix and current applied snapshot. The optional screenshot records the following matching draw. Capture settings are ordinary Options preferences outside named audio profiles.
+
 ```mermaid
 flowchart LR
     A["Manual circle or slider-head judgement"] --> B["Eligible accepted hits"]
@@ -23,6 +25,11 @@ flowchart LR
     L --> H
     D --> H
     F --> H
+    B --> P["Opt-in capture of inputs and observations"]
+    W --> P
+    I --> P
+    P --> M["Mark report and optional frame"]
+    M --> V["Replay with production timing helpers"]
 ```
 
 ## From input to a cue

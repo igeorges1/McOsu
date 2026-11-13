@@ -56,6 +56,20 @@
 
 #include "OsuBeatmap.h"
 #include "OsuDatabaseBeatmap.h"
+#include "OsuTimingAudioSetup.h"
+#include "OsuTimingAudioHUD.h"
+#include "lodepng.h"
+#include <ctime>
+#include <fstream>
+
+#define MCOSU_CAPTURE_STRING_(x) #x
+#define MCOSU_CAPTURE_STRING(x) MCOSU_CAPTURE_STRING_(x)
+#ifdef MCOSU_CAPTURE_SOURCE
+static const char *const timingCaptureSource = MCOSU_CAPTURE_STRING(MCOSU_CAPTURE_SOURCE);
+#else
+static const char *const timingCaptureSource = "unknown";
+#endif
+extern ConVar osu_timing_capture_enabled, osu_timing_capture_screenshot, osu_timing_capture_mark_key;
 #include "OsuBeatmapStandard.h"
 #include "OsuBeatmapMania.h"
 
@@ -829,6 +843,8 @@ void Osu::draw(Graphics *g)
 	}
 
 	// now, let OpenVR draw (this internally then calls the registered callback, meaning drawVR() here)
+	if (m_timingCaptureScreenshotDirectory.length() > 0)
+		finishTimingCaptureScreenshot(g);
 	if (isInVRMode())
 		openvr->draw(g);
 }
@@ -1278,6 +1294,19 @@ void Osu::updateMods()
 
 void Osu::onKeyDown(KeyboardEvent &key)
 {
+	const int marker = osu_timing_capture_mark_key.getInt();
+	if (marker != 0 && key == (KEYCODE)marker && m_timingCaptureHeldKey != marker && !key.isConsumed()
+		&& isInPlayMode() && osu_timing_capture_enabled.getBool()
+		&& !engine->getKeyboard()->isAltDown() && !engine->getKeyboard()->isControlDown() && !engine->getKeyboard()->isShiftDown())
+	{
+		m_timingCaptureHeldKey = marker;
+		const bool conflicts = key == KEY_ENTER || key == KEY_ESCAPE || key == KEY_F1
+			|| std::any_of(OsuKeyBindings::ALL.begin(), OsuKeyBindings::ALL.end(), [=](const ConVar *binding) {
+				return binding->getInt() == marker;
+			});
+		if (conflicts) m_notificationOverlay->addNotification("Timing mark key conflicts with a game binding.", 0xffff8888, false, 2);
+		else markTimingCapture();
+	}
 	// global hotkeys
 
 	// special hotkeys
@@ -1621,6 +1650,7 @@ void Osu::onKeyDown(KeyboardEvent &key)
 
 void Osu::onKeyUp(KeyboardEvent &key)
 {
+	if (key == (KEYCODE)m_timingCaptureHeldKey) m_timingCaptureHeldKey = 0;
 	if (isInPlayMode())
 	{
 		if (!getSelectedBeatmap()->isPaused())
@@ -1826,6 +1856,135 @@ void Osu::saveScreenshot()
 	}
 	std::vector<unsigned char> pixels = engine->getGraphics()->getScreenshot();
 	Image::saveToImage(&pixels[0], engine->getGraphics()->getResolution().x, engine->getGraphics()->getResolution().y, UString::format("screenshots/screenshot%i.png", screenshotNumber));
+}
+
+void Osu::markTimingCapture()
+{
+	const auto fail = [this](const char *message)
+	{
+		m_notificationOverlay->addNotification(message, 0xffff8888, false, 2.5f);
+	};
+	if (!osu_timing_capture_enabled.getBool() || !convar->getConVarByName("osu_timing_audio")->getBool())
+		return fail("Enable Timing Audio and timing capture first.");
+	auto *map = isInPlayMode() && !isInVRMode() && getInstanceID() == 0
+		? dynamic_cast<OsuBeatmapStandard *>(getSelectedBeatmap()) : NULL;
+	if (map == NULL || map->getMusic() == NULL || map->isLoading() || map->getSelectedDifficulty2() == NULL)
+		return fail("Mark a problem during ready standard gameplay.");
+	if (m_timingCaptureScreenshotDirectory.length() > 0)
+		return fail("The previous timing mark is waiting for its screenshot.");
+
+	const UString root = "timing-captures";
+	if (!env->directoryExists(root) && !env->createDirectory(root))
+		return fail("Could not create timing-captures.");
+	// The Windows environment appends its search wildcard directly to the path.
+	const auto children = env->getFoldersInFolder(UString::format("%s/", root.toUtf8()));
+	const auto count = std::count_if(children.begin(), children.end(), [](const UString &name) {
+		return name != "." && name != "..";
+	});
+	if (count >= 12)
+		return fail("Timing capture quota reached. Move old capture folders to keep recording.");
+	UString directory;
+	const long long stamp = std::time(NULL);
+	for (int suffix = 0; suffix < 12; ++suffix)
+	{
+		const auto candidate = UString::format("timing-captures/mark-%lld-%02d", stamp, suffix);
+		if (!env->directoryExists(candidate) && !env->fileExists(candidate) && env->createDirectory(candidate))
+		{
+			directory = candidate;
+			break;
+		}
+	}
+	if (directory.length() == 0) return fail("Could not reserve a new timing mark folder.");
+	const auto *difficulty = map->getSelectedDifficulty2();
+	const auto &hash = difficulty->getMD5Hash();
+	const std::string mapIdentity = hash.size() == 32 && hash.find_first_not_of("0123456789abcdef") == std::string::npos ? hash : "unknown";
+	const auto applied = OsuTimingAudioSettings::capture();
+	const auto hudMode = OsuTimingAudioView::fromSetting(convar->getConVarByName("osu_hud_hiterrorbar_timing_audio_view")->getInt());
+	const double recent = OsuTimingAudioHUD::recentDuration(convar->getConVarByName("osu_hud_hiterrorbar_timing_audio_recent_seconds")->getFloat());
+	const bool screenshot = osu_timing_capture_screenshot.getBool();
+	const auto selected = map->getTimingAudioView(hudMode, recent);
+	const auto &evaluation = selected.evaluation;
+	std::ostringstream metadata;
+	metadata.imbue(std::locale::classic());
+	metadata << std::setprecision(std::numeric_limits<double>::max_digits10)
+		<< "version=" << version->getString().toUtf8() << "\nartist=" << difficulty->getArtist().toUtf8()
+		<< "\ntitle=" << difficulty->getTitle().toUtf8() << "\ndifficulty=" << difficulty->getDifficultyName().toUtf8()
+		<< "\nmods=" << osu_mods.getString().toUtf8() << "\nmap_position_ms=" << map->getCurMusicPosWithOffsets()
+		<< "\nrate=" << map->getSpeedMultiplier() << "\nOD=" << map->getOD() << "\nAR=" << map->getAR()
+		<< "\nCS=" << map->getCS() << "\nHP=" << map->getHP() << "\nmark_real_seconds=" << engine->getTimeReal()
+		<< "\ntiming_epoch=" << map->getTimingCaptureEpoch()
+		<< "\nlocal_offset_ms=" << difficulty->getLocalOffset() << "\nonline_offset_ms=" << difficulty->getOnlineOffset()
+		<< "\nscreenshot=" << (screenshot ? "requested; see screenshot.txt" : "disabled") << '\n'
+		<< "observed_hud_mode=" << OsuTimingAudioView::name(hudMode)
+		<< "\nobserved_hud_phase=" << OsuTimingAudioSetup::phase(evaluation.phase)
+		<< "\nobserved_hud_pending_reset=" << selected.pendingReset
+		<< "\nobserved_hud_mean_map_ms=" << evaluation.learnedMeanMapMS
+		<< "\nobserved_hud_spread_map_ms=" << evaluation.spreadMapMS.lower << ',' << evaluation.spreadMapMS.upper
+		<< "\nobserved_hud_reference_map_ms=" << evaluation.referenceMapMS
+		<< "\nobserved_hud_silent_map_ms=" << evaluation.silentMapMS.lower << ',' << evaluation.silentMapMS.upper
+		<< "\nrecent_window_seconds=" << recent << '\n'
+		<< OsuTimingAudioSetup::copyText(applied, map->getTimingAudioView(OsuTimingAudioView::AUDIO_ESTIMATE, recent, true), hudMode, false);
+	for (const auto &control : OsuTimingAudioHudControls::controls())
+		metadata << control.name << '=' << convar->getConVarByName(control.name)->getString().toUtf8() << '\n';
+	for (const char *name : {"osu_draw_hud", "osu_hud_scale", "osu_hud_shift_tab_toggles_everything",
+		"osu_volume_master", "osu_volume_master_inactive", "osu_universal_offset", "osu_universal_offset_hardcoded"})
+		metadata << name << '=' << convar->getConVarByName(name)->getString().toUtf8() << '\n';
+
+	const UString temporary = UString::format("%s/capture.partial", directory.toUtf8());
+	const UString report = UString::format("%s/capture.mct", directory.toUtf8());
+	std::ofstream out(temporary.toUtf8(), std::ios::binary);
+	bool sufficient = false;
+	const bool wrote = out && map->writeTimingCapture(out, timingCaptureSource, mapIdentity, metadata.str(), recent, sufficient);
+	out.close();
+	if (!wrote || !out || !env->renameFile(temporary, report))
+		return fail("Timing mark could not be saved. Check capture.partial for any recoverable data.");
+	m_notificationOverlay->addNotification(UString::format("%s saved to %s",
+		sufficient ? "Timing capture" : "Partial timing capture", directory.toUtf8()), 0xffffffff, false, 2.5f);
+	if (screenshot)
+	{
+		m_timingCaptureScreenshotMap = mapIdentity;
+		m_timingCaptureScreenshotEpoch = map->getTimingCaptureEpoch();
+		m_timingCaptureScreenshotDirectory = directory;
+	}
+}
+
+void Osu::finishTimingCaptureScreenshot(Graphics *g)
+{
+	const UString directory = m_timingCaptureScreenshotDirectory;
+	m_timingCaptureScreenshotDirectory = "";
+	const double frame = engine->getTimeReal();
+	const auto resolution = g->getResolution();
+	const char *status = "gameplay frame unavailable";
+	auto *map = isInPlayMode() ? getSelectedBeatmap() : NULL;
+	const auto *difficulty = map != NULL ? map->getSelectedDifficulty2() : NULL;
+	if (difficulty != NULL && difficulty->getMD5Hash() == m_timingCaptureScreenshotMap
+		&& map->getTimingCaptureEpoch() == m_timingCaptureScreenshotEpoch)
+	{
+		if (resolution.x < 1 || resolution.y < 1 || resolution.x > 3840 || resolution.y > 2160)
+			status = "resolution outside screenshot bound";
+		else
+		{
+			const auto width = static_cast<unsigned int>(resolution.x);
+			const auto height = static_cast<unsigned int>(resolution.y);
+			const auto pixels = g->getScreenshot();
+			status = "framebuffer unavailable";
+			if (pixels.size() == static_cast<size_t>(width) * height * 3)
+			{
+				const auto path = UString::format("%s/frame.png", directory.toUtf8());
+				status = lodepng::encode(path.toUtf8(), pixels, width, height, LCT_RGB, 8) == 0 ? "saved" : "PNG write failed";
+			}
+		}
+	}
+	const auto sidecar = UString::format("%s/screenshot.txt", directory.toUtf8());
+	std::ofstream out(sidecar.toUtf8());
+	out.imbue(std::locale::classic());
+	out << std::setprecision(std::numeric_limits<double>::max_digits10)
+		<< "frame_real_seconds=" << frame << "\nframe_engine_seconds=" << engine->getTime()
+		<< "\ntiming_epoch=" << m_timingCaptureScreenshotEpoch << "\nstatus=" << status
+		<< "\nwidth=" << resolution.x << "\nheight=" << resolution.y << '\n';
+	out.close();
+	if (std::string(status) != "saved" || !out)
+		m_notificationOverlay->addNotification("Timing evidence saved. Screenshot or screenshot receipt unavailable.", 0xffff8888, false, 2.5f);
 }
 
 
@@ -2327,6 +2486,7 @@ void Osu::onFocusGained()
 
 void Osu::onFocusLost()
 {
+	m_timingCaptureHeldKey = 0;
 	if (isInPlayMode() && !getSelectedBeatmap()->isPaused() && osu_pause_on_focus_loss.getBool())
 	{
 		if (!isInMultiplayer())

@@ -41,6 +41,9 @@ ConVar osu_timing_audio_early_sound("osu_timing_audio_early_sound", "timing-earl
 ConVar osu_timing_audio_late_sound("osu_timing_audio_late_sound", "timing-late.wav", FCVAR_NONE, "Late cue filename within sounds/. Supports custom WAVs.");
 ConVar osu_timing_audio_retain_failed_cue("osu_timing_audio_retain_failed_cue", true, FCVAR_NONE, "Keep using the last good cue for a direction after a failed replacement. Off leaves that direction silent.");
 ConVar osu_timing_audio_trace("osu_timing_audio_trace", false, FCVAR_NONE, "Log preceding baseline, error, output and actual playback success; diagnostic overhead only when enabled.");
+ConVar osu_timing_capture_enabled("osu_timing_capture_enabled", false, FCVAR_NONE);
+ConVar osu_timing_capture_screenshot("osu_timing_capture_screenshot", true, FCVAR_NONE);
+ConVar osu_timing_capture_mark_key("osu_timing_capture_mark_key", 0, FCVAR_NONE);
 
 static double timingAudioValue(float value, double fallback, double minimum, double maximum)
 {
@@ -132,6 +135,9 @@ void OsuTimingAudioFeedback::reset()
 	m_state.reset();
 	m_recentWindow.reset();
 	m_playClock = OsuTimingAudioPlayClock();
+	m_captureFromReset = true;
+	++m_captureEpoch;
+	m_capture.reset();
 	m_prepared = false;
 	m_early.attemptedPath = "";
 	m_late.attemptedPath = "";
@@ -139,6 +145,7 @@ void OsuTimingAudioFeedback::reset()
 
 void OsuTimingAudioFeedback::reloadSounds()
 {
+	if (m_capture.enabled()) m_capture.add(OsuTimingAudioCapture::LIFECYCLE, {OsuTimingAudioCapture::RELOAD, engine->getTime()});
 	// Backend restarts invalidate sample handles, not learned timing or file choices.
 	// Reload the actual owned files, including a retained fallback after a failed change.
 	for (const Cue *cue : {&m_early, &m_late})
@@ -187,12 +194,45 @@ void OsuTimingAudioFeedback::loadCue(Cue &cue, const UString &path)
 void OsuTimingAudioFeedback::pause()
 {
 	suspendPlayClock();
-	if (m_enabled) m_state.pause(osu_timing_audio_restart.getBool());
+	if (m_enabled)
+	{
+		const bool restart = osu_timing_audio_restart.getBool();
+		m_state.pause(restart);
+		if (m_capture.enabled()) m_capture.add(OsuTimingAudioCapture::PAUSE, {(long double)restart});
+	}
 }
 
 void OsuTimingAudioFeedback::suspendPlayClock()
 {
-	m_playClock.advance(engine->getTime(), false);
+	syncCapture();
+	const double now = engine->getTime();
+	m_playClock.advance(now, false);
+	if (m_capture.enabled()) m_capture.add(OsuTimingAudioCapture::CLOCK, {now, 0, 1});
+	m_captureFromReset = false;
+}
+
+void OsuTimingAudioFeedback::syncCapture()
+{
+	m_capture.sync(osu_timing_audio.getBool() && osu_timing_capture_enabled.getBool(), m_captureFromReset);
+}
+
+void OsuTimingAudioFeedback::captureSkip()
+{
+	if (m_capture.enabled()) m_capture.add(OsuTimingAudioCapture::LIFECYCLE, {OsuTimingAudioCapture::SKIP, engine->getTime()});
+}
+
+bool OsuTimingAudioFeedback::writeCapture(std::ostream &out, const std::string &source, const std::string &map,
+	const std::string &metadata, double recentSeconds, bool &sufficient)
+{
+	syncCapture();
+	if (!m_capture.hasData()) return false;
+	const auto moments = m_recentWindow.getMoments(m_playClock.seconds(), recentSeconds);
+	m_capture.add(OsuTimingAudioCapture::MARK, {engine->getTime(), m_playClock.seconds(), recentSeconds,
+		(long double)moments.count, moments.meanMS, moments.varianceMS2,
+		(long double)m_recentWindow.truncated(m_playClock.seconds(), recentSeconds)});
+	sufficient = m_capture.complete() && source != "unknown" && map != "unknown"
+		&& metadata.size() <= OsuTimingAudioCapture::METADATA_LIMIT;
+	return m_capture.write(out, source, map, metadata);
 }
 
 bool OsuTimingAudioFeedback::needsActivities(const OsuTimingAudioState::Config &config, bool excludeActivity) const
@@ -255,20 +295,34 @@ OsuTimingAudioView OsuTimingAudioFeedback::getCurrentView(OsuTimingAudioView::Mo
 
 void OsuTimingAudioFeedback::update()
 {
+	syncCapture();
 	if (!osu_timing_audio.getBool())
 	{
 		if (m_enabled) reset();
 		m_enabled = false;
 		return;
 	}
-	const bool playing = m_beatmap->isPlaying() && !m_beatmap->isPaused()
-		&& !m_beatmap->isContinueScheduled() && !m_beatmap->isLoading();
-	m_playClock.advance(engine->getTime(), playing && !m_beatmap->isWaiting());
+	const bool paused = m_beatmap->isPaused();
+	const bool continuing = m_beatmap->isContinueScheduled();
+	const bool readyToPlay = m_beatmap->isPlaying() && !paused && !continuing;
+	const bool loading = readyToPlay && m_beatmap->isLoading();
+	const bool playing = readyToPlay && !loading;
+	const double now = engine->getTime();
+	const bool waiting = m_beatmap->isWaiting();
+	const bool counted = playing && !waiting;
+	m_playClock.advance(now, counted);
+	if (m_capture.enabled())
+	{
+		const int stage = loading ? 1 : paused ? 4 : continuing ? 5 : waiting ? 2 : playing ? 0 : 3;
+		m_capture.add(OsuTimingAudioCapture::CLOCK, {now, (long double)counted, (long double)stage});
+	}
+	m_captureFromReset = false;
 	if (!playing) return;
 	m_enabled = true;
 
 	const auto config = timingAudioConfig();
 	m_state.configure(config, m_playClock.seconds());
+	m_capture.configure(config, m_playClock.seconds());
 
 	const bool excludeActivity = osu_timing_audio_exclude_activity.getBool();
 	if (needsActivities(config, excludeActivity))
@@ -280,6 +334,12 @@ void OsuTimingAudioFeedback::update()
 			activities.push_back({(double)object->getTime(), (double)object->getTime() + (excludeActivity ? 0.0 : (double)object->getDuration())});
 		}
 		m_state.setActivities(activities);
+		if (m_capture.enabled())
+		{
+			m_capture.add(OsuTimingAudioCapture::ACTIVITIES, {(long double)activities.size()});
+			for (const auto &activity : activities)
+				m_capture.add(OsuTimingAudioCapture::ACTIVITY, {activity.startMS, activity.endMS});
+		}
 		m_excludeActivity = excludeActivity;
 		m_breakSeconds = config.breakSeconds;
 		m_prepared = true;
@@ -288,7 +348,10 @@ void OsuTimingAudioFeedback::update()
 	// Separately owned samples; explicit file changes never reset the estimator.
 	loadCue(m_early, osu_timing_audio_early_sound.getString());
 	loadCue(m_late, osu_timing_audio_late_sound.getString());
-	m_state.advance(m_beatmap->getCurMusicPosWithOffsets(), m_beatmap->getSpeedMultiplier());
+	const double mapMS = m_beatmap->getCurMusicPosWithOffsets();
+	const double speed = m_beatmap->getSpeedMultiplier();
+	m_state.advance(mapMS, speed);
+	if (m_capture.enabled()) m_capture.add(OsuTimingAudioCapture::ADVANCE, {mapMS, speed});
 }
 
 void OsuTimingAudioFeedback::onManualHit(long opportunityMS, long delta)
@@ -301,6 +364,8 @@ void OsuTimingAudioFeedback::onManualHit(long opportunityMS, long delta)
 	const auto inputs = timingAudioInputs(m_beatmap, delta);
 	const double playSeconds = m_playClock.seconds();
 	const auto result = m_state.sampleMap(delta, inputs.window300, inputs.recent, opportunityMS, inputs.targetMapMS(), playSeconds);
+	if (m_capture.enabled())
+		m_capture.hit(delta, inputs.window300, inputs.recent, opportunityMS, inputs.targetMapMS(), m_state, result);
 	if (!result.accepted)
 	{
 		m_lastOutput = OsuTimingAudioEvaluation::NO_ISSUE;
@@ -328,6 +393,9 @@ void OsuTimingAudioFeedback::onManualHit(long opportunityMS, long delta)
 		m_lastOutput = sound == NULL ? OsuTimingAudioEvaluation::CUE_UNAVAILABLE : OsuTimingAudioEvaluation::PLAY_FAILED;
 	else
 		m_lastOutput = played ? OsuTimingAudioEvaluation::PLAYED : OsuTimingAudioEvaluation::NO_ISSUE;
+	if (m_capture.enabled())
+		m_capture.add(OsuTimingAudioCapture::OUTPUT, {(long double)m_lastOutput, volume, engine->getSound()->getVolume(),
+			(long double)(sound != NULL), (long double)played});
 	if (osu_timing_audio_trace.getBool())
 		debugLog("TimingAudio: map=%ld error=%.3f baseline=%.3f deviation=%.3f preceding=%llu cue=%i played=%i gain=%.3f target_units=%.3f target_ms=%.3f target_valid=%i halfwidth=%.6f variance=%.6f fallback=%i\n", m_beatmap->getCurMusicPosWithOffsets(), (double)delta / inputs.window300.speed, result.baselineMS, result.deviationMS, result.precedingSamples, (int)result.cue, (int)played, volume, (double)inputs.target, inputs.reference.targetMS, (int)inputs.reference.valid, result.halfWidthMS, result.varianceMS2, (int)result.fixedFallback);
 }
