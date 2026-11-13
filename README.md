@@ -2,7 +2,7 @@
 
 Timing/HUD software checks and the reusable regression command are documented in
 [Verification](docs/verification.md). Build/runtime tools have a separate
-[guide](tools/runtime/README.md).
+[guide on the merged fork foundation](https://github.com/igeorges1/McOsu/blob/c977662847c422b2f435774897a18a702bc0a690/tools/runtime/README.md).
 
 **[DOWNLOAD > https://github.com/McKay42/McOsu/releases](https://github.com/McKay42/McOsu/releases)**
 

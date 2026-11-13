@@ -1,5 +1,6 @@
 /.verification-runs/
 /.ci-runs/
+/.github/scripts/__pycache__/
 /tools/__pycache__/
 /tools/runtime/out/
 /tools/runtime/__pycache__/

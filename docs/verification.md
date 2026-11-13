@@ -7,8 +7,11 @@ threads / DWARF2** distribution (`mingw32/bin/g++.exe`). The distribution name i
 There are no Python packages, engine checkout, release assets, BASS device, game
 installation, or private scripts to supply. No dependency download is implicit.
 Use a committed checkout for a reviewable receipt. This workflow was introduced
-on combined source `24da0eec695b581a00d57a25043b3d447783c27b`, which contains the
-required unpublished timing/HUD helpers; an older master checkout is insufficient.
+on combined source `24da0eec695b581a00d57a25043b3d447783c27b`. This publication
+branch carries the same timing/HUD helpers on the configurable-timing dependency,
+without duplicating separately merged database/runtime history. An older master
+checkout is insufficient. Hosted provisioning and artifacts are described in
+[CI](ci.md); local commands below still require explicit dependencies.
 
 ```powershell
 python tools/verify.py --toolchain C:/dependencies/mingw32
@@ -97,7 +100,7 @@ registration together when adding/removing tests. Product behavior is unchanged.
 Other boundaries, including production adapters, framebuffer probes, device/audio
 and human play, retain their separate evidence and limits.
 
-The independent [runtime tooling workflow](../tools/runtime/README.md) already has
+The independent [runtime tooling workflow](https://github.com/igeorges1/McOsu/blob/c977662847c422b2f435774897a18a702bc0a690/tools/runtime/README.md) already has
 its own supported tests: `python -m unittest discover -s tools/runtime/tests -v`.
 It is separate from this profile and is not rerun here. Profiles are a small
 explicit dispatch in `tools/verify.py`, not automatic discovery of arbitrary code.
