@@ -30,6 +30,16 @@ namespace OsuTimingCuePresentation
 		int x = 0, y = 0, width = 0, height = 0;
 	};
 
+	inline double playfieldEdge(int side, double centerX, double fieldWidth, double fieldHeight,
+		double rotationDegrees, float horizontalStretch, double hitcircleDiameter)
+	{
+		if (!std::isfinite(rotationDegrees)) return rotationDegrees;
+		const double angle = rotationDegrees * (std::acos(-1.0) / 180.0);
+		const double rotatedWidth = std::abs(std::cos(angle)) * fieldWidth + std::abs(std::sin(angle)) * fieldHeight;
+		const double stretchedWidth = rotatedWidth * std::abs(1.0f + horizontalStretch);
+		return centerX + side * (stretchedWidth + hitcircleDiameter) / 2;
+	}
+
 	inline Rect margin(int side, int width, int height, double playfieldEdge, double widthFraction,
 		double heightFraction, double insetFraction, double verticalCenter)
 	{

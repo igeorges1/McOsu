@@ -1,6 +1,7 @@
 #include "../src/App/Osu/OsuTimingCuePresentation.h"
 #include "../src/App/Osu/OsuTimingAudioState.h"
 #include <cassert>
+#include <limits>
 
 int main()
 {
@@ -49,5 +50,17 @@ int main()
 		assert(overlap.width == 100 && overlap.x == (side < 0 ? 120 : 580));
 		const auto confined = Cue::margin(side, 800, 600, side < 0 ? 140 : 660, .125, .4, .15f, .5);
 		assert(confined.width == 20 && confined.x == (side < 0 ? 120 : 660));
+
+		const double stretchedEdge = Cue::playfieldEdge(side, 640, 768, 576, 0, .5f, 96.03936);
+		const auto stretched = Cue::margin(side, 1280, 720, stretchedEdge, .1, .45, .005, .5);
+		assert(stretched.width == 9 && stretched.x == (side < 0 ? 6 : 1265));
+		const double rotatedEdge = Cue::playfieldEdge(side, 640, 768, 576, 90, .5f, 96);
+		assert(std::abs(rotatedEdge - (640 + side * 480)) < 1e-9);
+		const double collapsedEdge = Cue::playfieldEdge(side, 640, 768, 576, 90, -1, 96);
+		assert(collapsedEdge == 640 + side * 48);
+		const double reflectedEdge = Cue::playfieldEdge(side, 640, 768, 576, 90, -1.5f, 96);
+		assert(std::abs(reflectedEdge - (640 + side * 192)) < 1e-9);
+		const double invalidEdge = Cue::playfieldEdge(side, 640, 768, 576, 0, std::numeric_limits<float>::infinity(), 96);
+		assert(Cue::margin(side, 1280, 720, invalidEdge, .1, .45, .005, .5).width == 0);
 	}
 }

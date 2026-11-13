@@ -77,11 +77,11 @@ Applies immediately and saves to ordinary Options config.
 | Control | Key | Default | Options range | Effect |
 | --- | --- | --- | --- | --- |
 | Peripheral peak opacity | `osu_timing_visual_opacity` | `0.7` | `0`–`1` | Maximum cue opacity. Zero hides the visual cue. |
-| Peripheral cue width fraction | `osu_timing_visual_width` | `0.035` | `0.005`–`0.15` | Fraction of screen width, capped by the available playfield margin. |
+| Peripheral cue width fraction | `osu_timing_visual_width` | `0.035` | `0.005`–`0.15` | Fraction of viewport width, fitted after inset to the available margin or viewport. |
 | Peripheral cue height fraction | `osu_timing_visual_height` | `0.45` | `0.05`–`1` | Fraction of screen height. |
 | Peripheral edge inset fraction | `osu_timing_visual_inset` | `0.005` | `0`–`0.15` | Fraction of screen width inward from the edge. A large inset may leave no room. |
 | Peripheral vertical center fraction | `osu_timing_visual_center` | `0.5` | `0`–`1` | Vertical position from top to bottom; adjust around skin and input overlays. |
-| Keep cues outside the playfield | `osu_timing_visual_outside_playfield` | `true` | On / Off | Off permits a viewport-edge cue to overlap the playfield when margins are narrow. |
+| Keep cues outside the playfield | `osu_timing_visual_outside_playfield` | `true` | On / Off | Fit cues outside the playfield bounds after rotation and horizontal stretch, allowing for the hitcircle radius. Off allows overlap. |
 | Peripheral cue red | `osu_timing_visual_r` | `115` | `0`–`255` | Red channel for the shared peripheral cue color. |
 | Peripheral cue green | `osu_timing_visual_g` | `213` | `0`–`255` | Green channel for the shared peripheral cue color. |
 | Peripheral cue blue | `osu_timing_visual_b` | `255` | `0`–`255` | Blue channel for the shared peripheral cue color. |

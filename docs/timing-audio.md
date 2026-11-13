@@ -6,7 +6,7 @@ The optional [live timing debug capture](timing-capture.md) records the timing m
 
 [Performance capture](performance-capture.md) uses the same mark independently of timing audio. It records completed app update intervals and CPU-side phases, and exports them with the timing report and optional image through the bounded Windows worker.
 
-[Peripheral timing cues](peripheral-timing-cues.md) use the same hit decision as audio. Either channel can keep the shared learner active. Visual styling and side mapping are independent of audio routing.
+[Peripheral timing cues](peripheral-timing-cues.md) use the same hit decision as audio. Either channel can keep the shared learner active. Visual styling and side mapping are independent of audio routing. Confinement uses the Standard playfield's rotation, horizontal stretch and scaled hitcircle radius. The applied report gives the resulting cue width on each side.
 
 ```mermaid
 flowchart LR
@@ -23,6 +23,7 @@ flowchart LR
     X --> Q["Warmup and 300 gate → frozen early/late decision and excess"]
     Q --> S["Audio enable, mute, cue file and per-play pan"]
     Q --> J["Visual enable, side mapping, intensity and fade"]
+    G["Playfield bounds, viewport and cue placement"] --> J
     X --> H["Live HUD and applied readout"]
     B --> D["Rolling accepted-hit history"]
     I --> D
