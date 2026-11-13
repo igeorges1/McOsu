@@ -1,5 +1,6 @@
 #include "../src/App/Osu/OsuTimingAudioHUD.h"
 #include "../src/App/Osu/OsuTimingAudioRecentWindow.h"
+#include "../src/App/Osu/OsuTimingAudioPlayClock.h"
 #include "../src/App/Osu/OsuTimingAudioState.h"
 
 #include <cassert>
@@ -63,12 +64,13 @@ static void checkLiveEvaluation()
 static void checkRecentWindow()
 {
 	OsuTimingAudioRecentWindow history;
-	history.advance(0, true);
-	history.recordAcceptedHit(-6);
-	history.advance(1, true);
-	history.recordAcceptedHit(18);
-	history.recordAcceptedHit(std::numeric_limits<double>::infinity());
-	const auto moments = history.getMoments();
+	OsuTimingAudioPlayClock clock;
+	clock.advance(0, true);
+	history.recordAcceptedHit(clock.seconds(), -6);
+	clock.advance(1, true);
+	history.recordAcceptedHit(clock.seconds(), 18);
+	history.recordAcceptedHit(clock.seconds(), std::numeric_limits<double>::infinity());
+	const auto moments = history.getMoments(clock.seconds(), 5);
 	assert(moments.count == 2);
 	near(moments.meanMS, 6);
 	near(moments.varianceMS2, 144);
@@ -76,39 +78,51 @@ static void checkRecentWindow()
 	State state;
 	state.sampleMap(15, {50, 1.5}, false, 0, 0);
 	auto view = state.getCurrentEvaluation({50, 1.5}, false, 30);
-	history.apply(view, 1.5);
+	history.apply(view, 1.5, clock.seconds(), 5);
 	near(view.learnedMeanMapMS, 9);
 	near(view.spreadMapMS.lower, -9);
 	near(view.spreadMapMS.upper, 27);
 	near(view.referenceMapMS, 30);
 	near(view.silentMapMS.lower, 15);
 	near(view.silentMapMS.upper, 45);
-	assert(history.getMoments().count == 2 && state.getSamples() == 1);
+	assert(history.getMoments(clock.seconds(), 5).count == 2 && state.getSamples() == 1);
 
-	history.advance(1, false);
-	history.advance(10, false);
-	history.advance(20, true);
-	history.advance(23.99, true);
-	assert(history.getMoments().count == 2);
-	history.advance(24, true); // exactly five playing seconds after the first hit
-	assert(history.getMoments().count == 1);
-	history.apply(view, 2);
+	clock.advance(1, false);
+	clock.advance(10, false);
+	clock.advance(20, true);
+	clock.advance(23.99, true);
+	assert(history.getMoments(clock.seconds(), 5).count == 2);
+	clock.advance(24, true); // exactly five playing seconds after the first hit
+	assert(history.getMoments(clock.seconds(), 5).count == 1);
+	history.apply(view, 2, clock.seconds(), 5);
 	near(view.learnedMeanMapMS, 36);
 	assert(!std::isfinite(view.spreadMapMS.lower));
-	history.advance(25, true);
-	assert(history.getMoments().count == 0);
-	history.recordAcceptedHit(25);
+	clock.advance(25, true);
+	assert(history.getMoments(clock.seconds(), 5).count == 0);
+	assert(history.getMoments(clock.seconds(), 7).count == 2);
+	history.recordAcceptedHit(clock.seconds(), 25);
 	history.reset();
-	history.apply(view, 1);
+	history.apply(view, 1, clock.seconds(), 5);
 	assert(!std::isfinite(view.learnedMeanMapMS));
 
-	history.advance(100, false);
-	history.recordAcceptedHit(-50); // accepted before the playback clock starts
-	history.advance(110, false);
-	history.advance(111, true);
-	history.recordAcceptedHit(0);
-	assert(history.getMoments().count == 2);
-	near(history.getMoments().meanMS, -25);
+	clock = OsuTimingAudioPlayClock();
+	clock.advance(100, false);
+	history.recordAcceptedHit(clock.seconds(), -50); // accepted before playback starts
+	clock.advance(110, false);
+	clock.advance(111, true);
+	history.recordAcceptedHit(clock.seconds(), 0);
+	assert(history.getMoments(clock.seconds(), 5).count == 2);
+	near(history.getMoments(clock.seconds(), 5).meanMS, -25);
+	clock.advance(112, true);
+	clock.advance(111.5, true);
+	clock.advance(112, true);
+	near(clock.seconds(), 1);
+	clock.advance(std::numeric_limits<double>::quiet_NaN(), true);
+	clock.advance(114, true);
+	near(clock.seconds(), 1);
+	for (int i = 0; i < 2048; ++i) history.recordAcceptedHit(clock.seconds(), i);
+	assert(history.truncated(1, 5) && history.getMoments(1, 5).count == 2048);
+	assert(!history.truncated(5, 5));
 }
 
 static void checkTransition()

@@ -528,7 +528,7 @@ void OsuBeatmap::update()
 	// only continue updating hitobjects etc. if we have loaded everything
 	if (isLoading())
 	{
-		m_timingAudioFeedback->suspendRecentWindow();
+		m_timingAudioFeedback->suspendPlayClock();
 		return;
 	}
 
@@ -2355,9 +2355,9 @@ void OsuBeatmap::reloadTimingAudioSounds()
 	m_timingAudioFeedback->reloadSounds();
 }
 
-OsuTimingAudioView OsuBeatmap::getTimingAudioView(OsuTimingAudioView::Mode mode) const
+OsuTimingAudioView OsuBeatmap::getTimingAudioView(OsuTimingAudioView::Mode mode, double recentSeconds, bool includeCueStatus) const
 {
-	return m_timingAudioFeedback->getCurrentView(mode);
+	return m_timingAudioFeedback->getCurrentView(mode, recentSeconds, includeCueStatus);
 }
 
 void OsuBeatmap::playTimingFeedback(long opportunityMS, long delta, OsuScore::HIT result)

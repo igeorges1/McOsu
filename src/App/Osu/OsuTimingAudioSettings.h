@@ -8,12 +8,23 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include "OsuTimingAudioHudControls.h"
 
 class OsuTimingAudioSettings
 {
 public:
 	enum Type { BOOLEAN, NUMBER, INTEGER, FILENAME };
-	struct Spec { const char *name, *label; Type type; long double min, max; bool restarts; };
+	struct Spec
+	{
+		const char *name, *label;
+		Type type;
+		long double min, max;
+		bool restarts;
+		const char *legacyDefault;
+		Spec(const char *name, const char *label, Type type, long double min, long double max, bool restarts,
+			const char *legacyDefault = NULL)
+			: name(name), label(label), type(type), min(min), max(max), restarts(restarts), legacyDefault(legacyDefault) {}
+	};
 	typedef std::map<std::string, std::string> Values;
 	typedef std::map<std::string, Values> Profiles;
 	static const std::vector<Spec> &specs()
@@ -29,10 +40,17 @@ public:
 			{"osu_timing_audio_deadzone_adaptive_scale", "Adaptive variability multiplier", NUMBER, 0, 10, false},
 			{"osu_timing_audio_deadzone_adaptive_min", "Adaptive minimum fraction of 300", NUMBER, 0, 10, false},
 			{"osu_timing_audio_deadzone_adaptive_max", "Adaptive maximum fraction of 300", NUMBER, 0, 10, false},
+			{"osu_timing_audio_adaptive_startup_maximum", "Adaptive startup uses maximum (off = fixed ms)", BOOLEAN, 0, 1, false, "0"},
+			{"osu_timing_audio_idle_forgiveness", "Widen adaptive band during idle", BOOLEAN, 0, 1, false, "0"},
+			{"osu_timing_audio_idle_grace_seconds", "Idle grace (real-play seconds)", NUMBER, 0, 60, false, "1"},
+			{"osu_timing_audio_idle_ramp_seconds", "Idle widening ramp (real-play seconds)", NUMBER, 0, 60, false, "3"},
+			{"osu_timing_audio_idle_recovery_hits", "Idle recovery (accepted hits)", INTEGER, 1, 128, false, "4"},
 			{"osu_timing_audio_fixed_hits", "Use hit-count adaptation (off = time)", BOOLEAN, 0, 1, true},
 			{"osu_timing_audio_half_life_seconds", "Time half-life (active seconds)", NUMBER, 0.001L, 3600, true},
 			{"osu_timing_audio_half_life_hits", "Hit-count half-life (hits)", NUMBER, 0.001L, 100000, true},
-			{"osu_timing_audio_silent_startup", "Silent eight-hit Recent startup", BOOLEAN, 0, 1, false},
+			{"osu_timing_audio_startup_average_hits", "Startup running average (accepted hits)", INTEGER, 1, 128, true, "8"},
+			{"osu_timing_audio_silent_startup", "Mute Recent during startup", BOOLEAN, 0, 1, false},
+			{"osu_timing_audio_silent_startup_hits", "Recent warmup (accepted hits)", INTEGER, 0, 128, false, "8"},
 			{"osu_timing_audio_require_300", "Gate: baseline inside actual 300", BOOLEAN, 0, 1, false},
 			{"osu_timing_audio_restart", "Restart after breaks (off = retain)", BOOLEAN, 0, 1, false},
 			{"osu_timing_audio_exclude_activity", "Long bodies/spinners count as breaks", BOOLEAN, 0, 1, true},
@@ -40,6 +58,7 @@ public:
 			{"osu_timing_audio_volume", "Cue gain (0..1)", NUMBER, 0, 1, false},
 			{"osu_timing_audio_early_sound", "Early cue filename inside sounds/", FILENAME, 0, 0, false},
 			{"osu_timing_audio_late_sound", "Late cue filename inside sounds/", FILENAME, 0, 0, false},
+			{"osu_timing_audio_retain_failed_cue", "Keep last good cue if replacement fails", BOOLEAN, 0, 1, false, "1"},
 			{"osu_timing_audio_trace", "Diagnostic logging (adds overhead)", BOOLEAN, 0, 1, false}
 		};
 		return list;
@@ -53,6 +72,12 @@ public:
 		value = std::strtold(text.c_str(), &end);
 		return end != text.c_str() && *end == '\0' && std::isfinite(value);
 	}
+	static bool isManagedConfigKey(const std::string &name)
+	{
+		for (const Spec &spec : specs()) if (name == spec.name) return true;
+		for (const auto &control : OsuTimingAudioHudControls::controls()) if (name == control.name) return true;
+		return false;
+	}
 	// Replace standalone timing lines only. Preserve compound lines verbatim:
 	// removing a semicolon changes the console's recursive whitespace handling.
 	// Current callback-free timing values are written after these retained lines,
@@ -65,8 +90,7 @@ public:
 		const size_t nameStart = !commands.empty() && commands[0] == ' ' ? 1 : 0;
 		const size_t space = commands.find(' ', nameStart);
 		const std::string name = commands.substr(nameStart, space == std::string::npos ? space : space - nameStart);
-		for (const Spec &spec : specs())
-			if (name == spec.name) return comment == std::string::npos ? "" : line.substr(comment);
+		if (isManagedConfigKey(name)) return comment == std::string::npos ? "" : line.substr(comment);
 		return line;
 	}
 	// Dispatched command names for retained compounds containing timing controls.
@@ -86,7 +110,7 @@ public:
 			if (!statement.empty() && statement[0] == ' ') statement.erase(0, 1);
 			const std::string name = statement.substr(0, statement.find(' '));
 			names.push_back(name);
-			for (const Spec &spec : specs()) if (name == spec.name) { timing = true; break; }
+			timing = timing || isManagedConfigKey(name);
 			if (end == std::string::npos) break;
 			start = end + 1;
 		}
@@ -178,8 +202,10 @@ public:
 				if (!current->emplace(line.substr(0, split), line.substr(split + 1)).second) return "Duplicate profile setting.";
 			}
 		}
-		for (const auto &profile : result)
+		for (auto &profile : result)
 		{
+			for (const Spec &spec : specs())
+				if (spec.legacyDefault != NULL) profile.second.emplace(spec.name, spec.legacyDefault);
 			const std::string error = validate(profile.second);
 			if (!error.empty()) return error;
 		}

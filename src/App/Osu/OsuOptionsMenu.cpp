@@ -562,6 +562,9 @@ OsuOptionsMenu::OsuOptionsMenu(Osu *osu) : OsuScreenBackable(osu)
 
 	//**************************************************************************************************************************//
 
+	CBaseUIElement *sectionTiming = addSection("Timing Audio Experiment");
+	addTimingAudioOptions();
+
 	CBaseUIElement *sectionGeneral = addSection("General");
 
 	addSubSection("");
@@ -834,7 +837,6 @@ OsuOptionsMenu::OsuOptionsMenu(Osu *osu) : OsuScreenBackable(osu)
 
 	//**************************************************************************************************************************//
 
-	addTimingAudioOptions();
 	m_skinSection = addSection("Skin");
 
 	addSubSection("Skin");
@@ -1100,29 +1102,11 @@ OsuOptionsMenu::OsuOptionsMenu(Osu *osu) : OsuScreenBackable(osu)
 	addCheckbox("Draw Combo", convar->getConVarByName("osu_draw_combo"));
 	addCheckbox("Draw Accuracy", convar->getConVarByName("osu_draw_accuracy"));
 	addCheckbox("Draw ProgressBar", convar->getConVarByName("osu_draw_progressbar"));
-	addCheckbox("Draw HitErrorBar", convar->getConVarByName("osu_draw_hiterrorbar"));
-	addCheckbox("Draw HitErrorBar UR", "Unstable Rate", convar->getConVarByName("osu_draw_hiterrorbar_ur"));
 	addCheckbox("Draw ScoreBar", "Health/HP Bar.", convar->getConVarByName("osu_draw_scorebar"));
 	addCheckbox("Draw ScoreBar-bg", "Some skins abuse this as the playfield background image.\nIt is actually just the background image for the Health/HP Bar.", convar->getConVarByName("osu_draw_scorebarbg"));
 	addCheckbox("Draw ScoreBoard", convar->getConVarByName("osu_draw_scoreboard"));
 	addCheckbox("Draw Key Overlay", convar->getConVarByName("osu_draw_inputoverlay"));
 	addCheckbox("Draw Scrubbing Timeline", convar->getConVarByName("osu_draw_scrubbing_timeline"));
-	addCheckbox("Draw Miss Window on HitErrorBar", convar->getConVarByName("osu_hud_hiterrorbar_showmisswindow"));
-	addCheckbox("Timing Audio on Hit Error Bar", "Shows current timing audio state, including the latest eligible manual hit.\nWhite bracket: the selected statistics view's mean +/- one population standard deviation.\nCyan strip: actual audio silent band from the fixed, map-relative or adaptive rule.",
-		convar->getConVarByName("osu_hud_hiterrorbar_timing_audio"));
-	addCheckbox("Timing Audio Caption", "Show the current audio reference mode and status by the bar.\nThis setting is independent of the unstable rate and timing audio marks.",
-		convar->getConVarByName("osu_hud_hiterrorbar_timing_audio_caption"));
-	addCheckbox("Timing Audio Markers Only", "Hide both intervals regardless of the individual spread and silent band settings.\nKeep the white statistics mean and yellow audio reference ticks when available.\nThe centers can differ, especially in the Recent Window view.",
-		convar->getConVarByName("osu_hud_hiterrorbar_timing_audio_markers_only"));
-	addCheckbox("Timing Audio Spread Bracket", "Show the white spread bracket. The statistics mean tick stays visible when available.\nMarkers Only hides the bracket while enabled.",
-		convar->getConVarByName("osu_hud_hiterrorbar_timing_audio_spread"));
-	addCheckbox("Timing Audio Silent Band", "Show the cyan silent band. The audio reference tick stays visible when available.\nMarkers Only hides the band while enabled.",
-		convar->getConVarByName("osu_hud_hiterrorbar_timing_audio_silent_band"));
-	m_timingAudioViewButton = addButton("Timing Audio View");
-	m_elements.back().cvar = convar->getConVarByName("osu_hud_hiterrorbar_timing_audio_view");
-	m_timingAudioViewButton->setTooltipText("Audio estimate: current learned statistics.\nRecent window: accepted hits from the last five unpaused play seconds.\nProjected: hypothetical next hit at the learned average or audio reference.\nThe yellow reference and cyan silent band always show the actual audio model.");
-	m_timingAudioViewButton->setClickCallback(fastdelegate::MakeDelegate(this, &OsuOptionsMenu::onTimingAudioView));
-	updateTimingAudioViewButton();
 	addSpacer();
 	addCheckbox("Draw Stats: pp", "Realtime pp counter.\nDynamically calculates earned pp by incrementally updating the star rating.", convar->getConVarByName("osu_draw_statistics_pp"));
 	addCheckbox("Draw Stats: pp (SS)", "Max possible total pp for active mods (full combo + perfect acc).", convar->getConVarByName("osu_draw_statistics_perfectpp"));
@@ -1155,12 +1139,6 @@ OsuOptionsMenu::OsuOptionsMenu(Osu *osu) : OsuScreenBackable(osu)
 	m_hudAccuracyScaleSlider = addSlider("Accuracy Scale:", 0.01f, 3.0f, convar->getConVarByName("osu_hud_accuracy_scale"), 165.0f);
 	m_hudAccuracyScaleSlider->setChangeCallback( fastdelegate::MakeDelegate(this, &OsuOptionsMenu::onSliderChangePercent) );
 	m_hudAccuracyScaleSlider->setKeyDelta(0.01f);
-	m_hudHiterrorbarScaleSlider = addSlider("HitErrorBar Scale:", 0.01f, 3.0f, convar->getConVarByName("osu_hud_hiterrorbar_scale"), 165.0f);
-	m_hudHiterrorbarScaleSlider->setChangeCallback( fastdelegate::MakeDelegate(this, &OsuOptionsMenu::onSliderChangePercent) );
-	m_hudHiterrorbarScaleSlider->setKeyDelta(0.01f);
-	m_hudHiterrorbarURScaleSlider = addSlider("HitErrorBar UR Scale:", 0.01f, 3.0f, convar->getConVarByName("osu_hud_hiterrorbar_ur_scale"), 165.0f);
-	m_hudHiterrorbarURScaleSlider->setChangeCallback( fastdelegate::MakeDelegate(this, &OsuOptionsMenu::onSliderChangePercent) );
-	m_hudHiterrorbarURScaleSlider->setKeyDelta(0.01f);
 	m_hudProgressbarScaleSlider = addSlider("ProgressBar Scale:", 0.01f, 3.0f, convar->getConVarByName("osu_hud_progressbar_scale"), 165.0f);
 	m_hudProgressbarScaleSlider->setChangeCallback( fastdelegate::MakeDelegate(this, &OsuOptionsMenu::onSliderChangePercent) );
 	m_hudProgressbarScaleSlider->setKeyDelta(0.01f);
@@ -1285,6 +1263,7 @@ OsuOptionsMenu::OsuOptionsMenu(Osu *osu) : OsuScreenBackable(osu)
 	//**************************************************************************************************************************//
 
 	// build categories
+	addCategory(sectionTiming, OsuIcons::VOLUME_DOWN);
 	addCategory(sectionGeneral, OsuIcons::GEAR);
 	addCategory(sectionGraphics, OsuIcons::DESKTOP);
 
@@ -1918,8 +1897,21 @@ void OsuOptionsMenu::updateLayout()
 						if (m_elements[i].allowUnderscale && m_elements[i].cvar->getFloat() < sliderPointer->getMin())
 							sliderPointer->setBounds(m_elements[i].cvar->getFloat(), sliderPointer->getMax());
 
-						sliderPointer->setValue(m_elements[i].cvar->getFloat(), false);
-						sliderPointer->fireChangeCallback();
+							if (m_elements[i].timingHudHelp != NULL)
+							{
+								// Layout and search can rebuild every row. Refresh the label without
+								// applying slider rounding or clamping to a saved console value.
+								auto *label = static_cast<CBaseUILabel*>(m_elements[i].elements[2]);
+								const auto *var = m_elements[i].cvar;
+								sliderPointer->setInitialValue(var->getFloat());
+								const bool percent = sliderPointer == m_hudHiterrorbarScaleSlider || sliderPointer == m_hudHiterrorbarURScaleSlider;
+								label->setText(percent ? UString::format("%.0f%%", 100.0 * var->getFloat()) : var->getString());
+							}
+							else
+							{
+								sliderPointer->setValue(m_elements[i].cvar->getFloat(), false);
+								sliderPointer->fireChangeCallback();
+							}
 					}
 				}
 			}
@@ -3128,6 +3120,16 @@ void OsuOptionsMenu::onCheckboxChange(CBaseUICheckbox *checkbox)
 
 void OsuOptionsMenu::onSliderChange(CBaseUISlider *slider)
 {
+	updateSliderValue(slider, 100.0f);
+}
+
+void OsuOptionsMenu::onTimingHudPreciseSlider(CBaseUISlider *slider)
+{
+	updateSliderValue(slider, 1000.0f);
+}
+
+void OsuOptionsMenu::updateSliderValue(CBaseUISlider *slider, float precision)
+{
 	for (int i=0; i<m_elements.size(); i++)
 	{
 		for (int e=0; e<m_elements[i].elements.size(); e++)
@@ -3135,7 +3137,7 @@ void OsuOptionsMenu::onSliderChange(CBaseUISlider *slider)
 			if (m_elements[i].elements[e] == slider)
 			{
 				if (m_elements[i].cvar != NULL)
-					m_elements[i].cvar->setValue(std::round(slider->getFloat()*100.0f)/100.0f); // round to 2 decimal places
+					m_elements[i].cvar->setValue(std::round(slider->getFloat()*precision)/precision);
 
 				if (m_elements[i].elements.size() == 3)
 				{
@@ -4239,6 +4241,10 @@ void OsuOptionsMenu::save()
 				{
 					if (m_elements[i].cvar != NULL && legacyMatches(m_elements[i].cvar))
 					{
+						// Managed standalone settings were already removed exactly above.
+						// Preserve any retained compound with a managed first command.
+						if (OsuTimingAudioSettings::isManagedConfigKey(m_elements[i].cvar->getName().toUtf8()))
+							continue;
 						// Keep the widget filter's first-command check for compounds too.
 						// A later widget assignment must not erase earlier user commands;
 						// its current value is written after the retained lines below.

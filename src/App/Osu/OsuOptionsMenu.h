@@ -13,6 +13,7 @@
 #include "OsuTimingAudioSettings.h"
 
 class Osu;
+struct OsuTimingAudioView;
 
 class OsuUIButton;
 class OsuUISlider;
@@ -92,6 +93,7 @@ private:
 		std::vector<CBaseUIElement*> elements;
 		ConVar *cvar;
 		int type;
+		const char *timingHudHelp = NULL;
 
 		float label1Width;
 		float relSizeDPI;
@@ -118,6 +120,10 @@ private:
 	void updateHPDrainSelectLabel();
 
 	void addTimingAudioOptions();
+	OsuTimingAudioView appliedTimingAudioView(const OsuTimingAudioSettings::Values &applied) const;
+	void onCopyTimingAudioSetup();
+	void onTimingHudPreciseSlider(CBaseUISlider *slider);
+	void updateSliderValue(CBaseUISlider *slider, float precision);
 	void syncTimingAudio(const OsuTimingAudioSettings::Values &values);
 	OsuTimingAudioSettings::Values timingAudioDraft() const;
 	void updateTimingAudioEditor();
@@ -357,10 +363,13 @@ private:
 		const OsuTimingAudioSettings::Spec *spec;
 		CBaseUICheckbox *checkbox;
 		CBaseUITextbox *textbox;
+		CBaseUILabel *label;
 	};
 	std::vector<TimingAudioField> m_timingAudioFields;
 	OsuUIButton *m_timingAudioViewButton = NULL;
 	CBaseUILabel *m_timingAudioStatus;
+	CBaseUILabel *m_timingAudioSetupReference, *m_timingAudioSetupBand, *m_timingAudioSetupLearning;
+	double m_timingAudioSetupNextUpdate = 0;
 	CBaseUILabel *m_timingAudioProfileStatus = NULL;
 	CBaseUITextbox *m_timingAudioProfileName;
 	OsuUIButton *m_timingAudioMuteButton, *m_timingAudioWidthButton, *m_timingAudioLoadButton;

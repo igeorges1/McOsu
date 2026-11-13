@@ -106,6 +106,22 @@ ConVar osu_hud_hiterrorbar_timing_audio_markers_only("osu_hud_hiterrorbar_timing
 ConVar osu_hud_hiterrorbar_timing_audio_spread("osu_hud_hiterrorbar_timing_audio_spread", true, FCVAR_NONE);
 ConVar osu_hud_hiterrorbar_timing_audio_silent_band("osu_hud_hiterrorbar_timing_audio_silent_band", true, FCVAR_NONE);
 ConVar osu_hud_hiterrorbar_timing_audio_view("osu_hud_hiterrorbar_timing_audio_view", 0, FCVAR_NONE);
+ConVar osu_hud_hiterrorbar_timing_audio_recent_seconds("osu_hud_hiterrorbar_timing_audio_recent_seconds", 5.0f, FCVAR_NONE);
+ConVar osu_hud_hiterrorbar_timing_audio_smooth_seconds("osu_hud_hiterrorbar_timing_audio_smooth_seconds", 0.12f, FCVAR_NONE);
+ConVar osu_hud_hiterrorbar_timing_audio_alpha("osu_hud_hiterrorbar_timing_audio_alpha", 1.0f, FCVAR_NONE);
+ConVar osu_hud_hiterrorbar_timing_audio_caption_scale("osu_hud_hiterrorbar_timing_audio_caption_scale", 0.55f, FCVAR_NONE);
+ConVar osu_hud_hiterrorbar_timing_audio_stroke_scale("osu_hud_hiterrorbar_timing_audio_stroke_scale", 1.0f, FCVAR_NONE);
+ConVar osu_hud_hiterrorbar_timing_audio_mean_tick("osu_hud_hiterrorbar_timing_audio_mean_tick", true, FCVAR_NONE);
+ConVar osu_hud_hiterrorbar_timing_audio_reference_tick("osu_hud_hiterrorbar_timing_audio_reference_tick", true, FCVAR_NONE);
+ConVar osu_hud_hiterrorbar_timing_audio_band_r("osu_hud_hiterrorbar_timing_audio_band_r", 142, FCVAR_NONE);
+ConVar osu_hud_hiterrorbar_timing_audio_band_g("osu_hud_hiterrorbar_timing_audio_band_g", 245, FCVAR_NONE);
+ConVar osu_hud_hiterrorbar_timing_audio_band_b("osu_hud_hiterrorbar_timing_audio_band_b", 231, FCVAR_NONE);
+ConVar osu_hud_hiterrorbar_timing_audio_reference_r("osu_hud_hiterrorbar_timing_audio_reference_r", 255, FCVAR_NONE);
+ConVar osu_hud_hiterrorbar_timing_audio_reference_g("osu_hud_hiterrorbar_timing_audio_reference_g", 224, FCVAR_NONE);
+ConVar osu_hud_hiterrorbar_timing_audio_reference_b("osu_hud_hiterrorbar_timing_audio_reference_b", 151, FCVAR_NONE);
+ConVar osu_hud_hiterrorbar_timing_audio_statistics_r("osu_hud_hiterrorbar_timing_audio_statistics_r", 255, FCVAR_NONE);
+ConVar osu_hud_hiterrorbar_timing_audio_statistics_g("osu_hud_hiterrorbar_timing_audio_statistics_g", 255, FCVAR_NONE);
+ConVar osu_hud_hiterrorbar_timing_audio_statistics_b("osu_hud_hiterrorbar_timing_audio_statistics_b", 255, FCVAR_NONE);
 ConVar osu_hud_hiterrorbar_width_percent_with_misswindow("osu_hud_hiterrorbar_width_percent_with_misswindow", 0.4f, FCVAR_NONE);
 ConVar osu_hud_hiterrorbar_width_percent("osu_hud_hiterrorbar_width_percent", 0.15f, FCVAR_NONE);
 ConVar osu_hud_hiterrorbar_height_percent("osu_hud_hiterrorbar_height_percent", 0.007f, FCVAR_NONE);
@@ -2282,7 +2298,7 @@ void OsuHUD::drawHitErrorBar(Graphics *g, OsuBeatmapStandard *beatmapStd)
 	}
 }
 
-static UString timingAudioLabel(const OsuTimingAudioView &view, float windowMapMS)
+static UString timingAudioLabel(const OsuTimingAudioView &view, float windowMapMS, double recentSeconds)
 {
 	using Evaluation = OsuTimingAudioEvaluation;
 	const auto &evaluation = view.evaluation;
@@ -2294,10 +2310,17 @@ static UString timingAudioLabel(const OsuTimingAudioView &view, float windowMapM
 	default: break;
 	}
 	UString label = OsuTimingAudioView::name(view.mode);
+	if (view.mode == OsuTimingAudioView::RECENT_WINDOW)
+	{
+		label.append(UString::format(" %.3g s", recentSeconds));
+		if (view.recentTruncated) label.append(" (history full)");
+	}
 	label.append(evaluation.recent ? " | Recent ref" : " | Beatmap ref");
 	if (evaluation.phase == Evaluation::WARMUP) label.append(" | Warming up");
 	else if (evaluation.phase == Evaluation::GATED) label.append(" | 300 gate");
 	else if (evaluation.fixedFallback) label.append(" | Fixed fallback");
+	else if (view.band.startupMaximum) label.append(" | Startup maximum");
+	else if (view.band.idleActive && view.band.allowance > 0) label.append(" | Idle allowance");
 	else if (!std::isfinite(evaluation.spreadMapMS.lower)) label.append(" | SD unavailable");
 	if (evaluation.output == Evaluation::MUTED) label.append(" | Muted");
 	if (std::abs(evaluation.referenceMapMS) > windowMapMS) label.append(" | Ref off bar");
@@ -2310,6 +2333,7 @@ void OsuHUD::drawHitErrorBar(Graphics *g, float hitWindow300, float hitWindow100
 	OsuTimingAudioEvaluation evaluation;
 	evaluation.phase = OsuTimingAudioEvaluation::OFF;
 	UString label;
+	const double recentSeconds = OsuTimingAudioHUD::recentDuration(osu_hud_hiterrorbar_timing_audio_recent_seconds.getFloat());
 	if (beatmap != NULL)
 	{
 		if (m_timingAudioBeatmap != beatmap)
@@ -2320,14 +2344,16 @@ void OsuHUD::drawHitErrorBar(Graphics *g, float hitWindow300, float hitWindow100
 		OsuTimingAudioView view;
 		view.evaluation.phase = OsuTimingAudioEvaluation::OFF;
 		if (osu_hud_hiterrorbar_timing_audio.getBool())
-			view = beatmap->getTimingAudioView(OsuTimingAudioView::fromSetting(osu_hud_hiterrorbar_timing_audio_view.getInt()));
+			view = beatmap->getTimingAudioView(OsuTimingAudioView::fromSetting(osu_hud_hiterrorbar_timing_audio_view.getInt()), recentSeconds);
 		const float window = osu_hud_hiterrorbar_showmisswindow.getBool() ? hitWindowMiss : hitWindow50;
-		evaluation = m_timingAudioTransition.present(view, window, engine->getTime());
+		evaluation = m_timingAudioTransition.present(view, window, engine->getTime(),
+			OsuTimingAudioHUD::setting(osu_hud_hiterrorbar_timing_audio_smooth_seconds.getFloat(), 0.12, 0, 1));
 		if (osu_hud_hiterrorbar_timing_audio_caption.getBool())
-			label = timingAudioLabel(view, window);
+			label = timingAudioLabel(view, window, recentSeconds);
 	}
 
-	const float alpha = osu_hud_hiterrorbar_alpha.getFloat();
+	const float alpha = osu_hud_hiterrorbar_alpha.getFloat()
+		* OsuTimingAudioHUD::setting(osu_hud_hiterrorbar_timing_audio_alpha.getFloat(), 1, 0, 1);
 	const float hudScale = osu_hud_scale.getFloat() * osu_hud_hiterrorbar_scale.getFloat();
 	const float entryHeight = m_osu->getScreenHeight() * osu_hud_hiterrorbar_height_percent.getFloat()
 		* hudScale * osu_hud_hiterrorbar_bar_height_scale.getFloat();
@@ -2336,7 +2362,8 @@ void OsuHUD::drawHitErrorBar(Graphics *g, float hitWindow300, float hitWindow100
 	{
 		if (alpha <= 0.0f || label.length() == 0 || hudScale <= 0.0f) return;
 		McFont *font = m_osu->getSongBrowserFont();
-		const float scale = std::min(0.55f * hudScale,
+		const float captionScale = OsuTimingAudioHUD::setting(osu_hud_hiterrorbar_timing_audio_caption_scale.getFloat(), 0.55, 0.1, 2);
+		const float scale = std::min(captionScale * hudScale,
 			(m_osu->getScreenWidth() - 8.0f) / font->getStringWidth(label));
 		if (scale <= 0.0f) return;
 		const float width = font->getStringWidth(label) * scale;
@@ -2431,6 +2458,17 @@ void OsuHUD::drawHitErrorBar(Graphics *g, float hitWindow300, float hitWindow100
 
 static void drawTimingAudioGeometry(Graphics *g, const OsuTimingAudioHUD::Geometry &geometry, float barHeight, float alpha)
 {
+	alpha *= OsuTimingAudioHUD::setting(osu_hud_hiterrorbar_timing_audio_alpha.getFloat(), 1, 0, 1);
+	if (alpha <= 0) return;
+	const auto tint = [](const ConVar &r, const ConVar &g, const ConVar &b)
+	{
+		return COLOR(255, clamp<int>(r.getInt(), 0, 255), clamp<int>(g.getInt(), 0, 255), clamp<int>(b.getInt(), 0, 255));
+	};
+	const Color band = tint(osu_hud_hiterrorbar_timing_audio_band_r, osu_hud_hiterrorbar_timing_audio_band_g, osu_hud_hiterrorbar_timing_audio_band_b);
+	const Color reference = tint(osu_hud_hiterrorbar_timing_audio_reference_r, osu_hud_hiterrorbar_timing_audio_reference_g, osu_hud_hiterrorbar_timing_audio_reference_b);
+	const Color statistics = tint(osu_hud_hiterrorbar_timing_audio_statistics_r, osu_hud_hiterrorbar_timing_audio_statistics_g, osu_hud_hiterrorbar_timing_audio_statistics_b);
+	const double strokeScale = OsuTimingAudioHUD::setting(osu_hud_hiterrorbar_timing_audio_stroke_scale.getFloat(), 1, 0.5, 3);
+	const auto pixels = [=](int value) { return std::max(1, (int)std::round(value * strokeScale)); };
 	const auto stroke = [=](int x, int y, int width, int height, Color color)
 	{
 		g->setColor(0xff101010);
@@ -2445,23 +2483,24 @@ static void drawTimingAudioGeometry(Graphics *g, const OsuTimingAudioHUD::Geomet
 	{
 		const int left = (int)std::round(geometry.silent.lower);
 		const int right = (int)std::round(geometry.silent.upper);
-		stroke(left, bandY, std::max(1, right - left), 3, 0xff8ef5e7);
+		stroke(left, bandY, std::max(1, right - left), pixels(3), band);
 	}
-	if (geometry.showReference)
+	if (geometry.showReference && osu_hud_hiterrorbar_timing_audio_reference_tick.getBool())
 	{
 		const int x = (int)std::round(geometry.reference);
-		stroke(x - 1, bandY + 4, 3, 4, 0xffffe097);
+		stroke(x - pixels(3) / 2, bandY + pixels(3) + 1, pixels(3), pixels(4), reference);
 	}
-	const int spreadY = -bandY - 4;
+	const int spreadY = -bandY - pixels(4);
 	if (geometry.spread.visible)
 	{
 		const int left = (int)std::round(geometry.spread.lower);
 		const int right = (int)std::round(geometry.spread.upper);
-		stroke(left, spreadY, std::max(1, right - left), 1, 0xffffffff);
-		if (geometry.spread.showLowerCap) stroke(left, spreadY, 1, 4, 0xffffffff);
-		if (geometry.spread.showUpperCap && right != left) stroke(right, spreadY, 1, 4, 0xffffffff);
+		stroke(left, spreadY, std::max(1, right - left), pixels(1), statistics);
+		if (geometry.spread.showLowerCap) stroke(left, spreadY, pixels(1), pixels(4), statistics);
+		if (geometry.spread.showUpperCap && right != left) stroke(right, spreadY, pixels(1), pixels(4), statistics);
 	}
-	if (geometry.showMean) stroke((int)std::round(geometry.mean), spreadY - 3, 1, 4, 0xffffffff);
+	if (geometry.showMean && osu_hud_hiterrorbar_timing_audio_mean_tick.getBool())
+		stroke((int)std::round(geometry.mean) - pixels(1) / 2, spreadY - pixels(3), pixels(1), pixels(4), statistics);
 }
 
 void OsuHUD::drawHitErrorBarInt(Graphics *g, float hitWindow300, float hitWindow100, float hitWindow50, float hitWindowMiss, const OsuTimingAudioEvaluation &evaluation)

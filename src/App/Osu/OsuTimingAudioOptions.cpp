@@ -13,8 +13,14 @@
 #include "CBaseUIScrollView.h"
 #include "CBaseUIContainer.h"
 #include "Osu.h"
+#include "OsuBeatmapStandard.h"
 #include "OsuUIButton.h"
 #include "OsuUIContextMenu.h"
+#include "OsuTimingAudioSetup.h"
+#include "OsuTimingAudioHUD.h"
+#include "OsuTimingAudioHudControls.h"
+#include "OsuUISlider.h"
+#include "OsuTooltipOverlay.h"
 #include <algorithm>
 #include <cctype>
 
@@ -23,51 +29,66 @@ static const char *timingWidthNames[] = {"Fixed milliseconds", "Map-relative fra
 void OsuOptionsMenu::addTimingAudioOptions()
 {
 	const size_t firstElement = m_elements.size();
-	addSubSection("Timing Audio");
-	addLabel("Manual standard circles and slider heads.");
-	addLabel("Ctrl+O during play opens options.");
-	addLabel("Search Timing Audio to return here.");
-	addLabel("Edit, then Apply. Ctrl+Enter also applies.");
-	addLabel("Mute is immediate and keeps learning.");
-	addLabel("Pause first for longer edits.");
-	addLabel("Closing without Apply discards edits.");
-	addLabel("Use decimal points.");
-	m_timingAudioMuteButton = addButton("Mute training cues (keep learning)");
-	m_timingAudioMuteButton->setText("Mute cues (keep learning)");
-	m_timingAudioMuteButton->setClickCallback(fastdelegate::MakeDelegate(this, &OsuOptionsMenu::onTimingAudioMute));
-	m_elements.back().searchTags = "timing audio mute";
-	m_timingAudioStatus = addLabel("Current game settings.");
+	addSubSection("Applied Timing Setup");
+	m_timingAudioSetupReference = addLabel("Reference and band");
+	m_elements.back().searchTags = "timing audio status applied setup";
+	m_timingAudioSetupBand = addLabel("Band status");
+	m_elements.back().searchTags = "timing audio status applied setup";
+	m_timingAudioSetupLearning = addLabel("Learned spread");
+	m_elements.back().searchTags = "timing audio status applied setup";
+	addButton("Copy applied timing setup")->setClickCallback(fastdelegate::MakeDelegate(this, &OsuOptionsMenu::onCopyTimingAudioSetup));
+	m_elements.back().searchTags = "timing audio copy status applied reference silent band spread";
+	addLabel("Apply edits with Ctrl+Enter or the button below.");
+	m_timingAudioStatus = addLabel("Editor matches applied settings.");
 	m_elements.back().searchTags = "timing audio status";
 	addButton("Apply timing settings to game")->setClickCallback(fastdelegate::MakeDelegate(this, &OsuOptionsMenu::onTimingAudioApply));
 	m_elements.back().searchTags = "timing audio apply target gain reference width adaptive half-life startup gate break cue";
+	addSubSection("Timing Audio Reference and Band");
+	addLabel("Target 0 is center. Negative is early.");
+	addLabel("Targets 1, 2 and 3 use the 300, 100 and 50 edges.");
+	addLabel("Adaptive startup width and later idle widening are independent.");
 	for (const auto &spec : OsuTimingAudioSettings::specs())
 	{
-		if (std::string(spec.name) == "osu_timing_audio_muted") continue; // immediate button above
-		TimingAudioField field = {&spec, NULL, NULL};
-		const UString tags = UString::format("timing audio %s", spec.label);
-		if (std::string(spec.name) == "osu_timing_audio_deadzone_mode")
+		const std::string key = spec.name;
+		if (key == "osu_timing_audio_muted") continue;
+		if (key == "osu_timing_audio_idle_forgiveness")
+		{
+			addSubSection("Adaptive Idle Widening");
+			addLabel("Idle tuning applies after two accepted hits in Adaptive spread.");
+		}
+		if (key == "osu_timing_audio_fixed_hits")
+		{
+			addSubSection("Timing Audio Learning and Breaks");
+			addLabel("Changes to weighting, startup averaging or break detection reset learning.");
+			addLabel("Recent warmup needs Recent reference and its mute toggle.");
+		}
+		if (key == "osu_timing_audio_volume")
+		{
+			addSubSection("Timing Audio Cues and Mute");
+			m_timingAudioMuteButton = addButton("Mute training cues (keep learning)");
+			m_timingAudioMuteButton->setText("Mute cues (keep learning)");
+			m_timingAudioMuteButton->setClickCallback(fastdelegate::MakeDelegate(this, &OsuOptionsMenu::onTimingAudioMute));
+			m_elements.back().searchTags = "timing audio mute";
+		}
+		TimingAudioField field = {&spec, NULL, NULL, NULL};
+		const auto &help = convar->getConVarByName(spec.name)->getHelpstring();
+		const UString tags = UString::format("timing audio %s %s %s", spec.label, spec.name, help.toUtf8());
+		if (key == "osu_timing_audio_deadzone_mode")
 		{
 			m_timingAudioWidthButton = addButton("Silent width");
 			m_timingAudioWidthButton->setClickCallback(fastdelegate::MakeDelegate(this, &OsuOptionsMenu::onTimingAudioWidth));
 		}
 		else if (spec.type == OsuTimingAudioSettings::BOOLEAN)
-			field.checkbox = addCheckbox(spec.label, "Changes take effect after Apply.", NULL);
+			field.checkbox = addCheckbox(spec.label, help, NULL);
 		else
 		{
-			addLabel(spec.label);
+			field.label = addLabel(spec.label);
 			m_elements.back().searchTags = tags;
 			field.textbox = addTextbox("", (ConVar*)NULL);
 		}
 		m_elements.back().searchTags = tags;
 		m_timingAudioFields.push_back(field);
 	}
-	addLabel("Adaptation, activity, threshold: reset.");
-	addLabel("Target, reference, width, cues: retain.");
-	addLabel("Target: 0 centre; negative is early.");
-	addLabel("+/-1 at 300; +/-2 at 100; +/-3 at 50.");
-	addLabel("Gate checks preceding baseline at zero.");
-	addLabel("Startup off: Recent cues from hit 2.");
-	addLabel("Adaptive starts with two fixed-width hits.");
 	addLabel("Cue gain ignores Effects; uses Master.");
 	addLabel("Retry to reload edits to the same file.");
 	addButton("Apply timing settings to game")->setClickCallback(fastdelegate::MakeDelegate(this, &OsuOptionsMenu::onTimingAudioApply));
@@ -85,10 +106,46 @@ void OsuOptionsMenu::addTimingAudioOptions()
 	m_elements.back().searchTags = "timing audio preview early";
 	addButton("Preview draft late cue")->setClickCallback(fastdelegate::MakeDelegate(this, &OsuOptionsMenu::onTimingAudioPreviewLate));
 	m_elements.back().searchTags = "timing audio preview late";
+	using namespace OsuTimingAudioHudControls;
+	Group group = BAR;
+	for (const Control &control : controls())
+	{
+		if (control.group != group)
+		{
+			group = control.group;
+			addSubSection(group == TIMING ? "Timing Audio HUD"
+				: (group == APPEARANCE ? "Timing Overlay Appearance" : "Hit Error Bar Appearance and Layout"));
+		}
+		ConVar *var = convar->getConVarByName(control.name);
+		if (control.kind == Toggle) addCheckbox(control.label, control.help, var);
+		else if (control.kind == View)
+		{
+			m_timingAudioViewButton = addButton(control.label);
+			m_elements.back().cvar = var;
+			m_timingAudioViewButton->setTooltipText(control.help);
+			m_timingAudioViewButton->setClickCallback(fastdelegate::MakeDelegate(this, &OsuOptionsMenu::onTimingAudioView));
+			updateTimingAudioViewButton();
+		}
+		else
+		{
+			auto *slider = addSlider(control.label, control.min, control.max, var);
+			m_elements.back().timingHudHelp = control.help;
+			slider->setKeyDelta(control.kind == Integer ? 1.0f : (control.kind == Precise ? 0.001f : 0.01f));
+			if (control.kind == Integer)
+				slider->setChangeCallback(fastdelegate::MakeDelegate(this, &OsuOptionsMenu::onSliderChangeInt));
+			else if (control.kind == Precise)
+				slider->setChangeCallback(fastdelegate::MakeDelegate(this, &OsuOptionsMenu::onTimingHudPreciseSlider));
+			else if (control.kind == BarScale || control.kind == URScale)
+			{
+				slider->setChangeCallback(fastdelegate::MakeDelegate(this, &OsuOptionsMenu::onSliderChangePercent));
+				if (control.kind == BarScale) m_hudHiterrorbarScaleSlider = slider;
+				else m_hudHiterrorbarURScaleSlider = slider;
+			}
+		}
+		m_elements.back().searchTags = UString::format("%s %s", control.name, control.help);
+	}
 	addSubSection("Timing Audio Profiles");
-	addLabel("Profiles store timing settings only.");
-	addLabel("Maps, skin and mix stay as they are.");
-	addLabel("Learned timing is not saved.");
+	addLabel("Profiles store audio settings. HUD preferences are saved with Options.");
 	addLabel("Apply edits before saving a profile.");
 	addLabel("Profile name:");
 	m_timingAudioProfileName = addTextbox("", (ConVar*)NULL);
@@ -141,6 +198,60 @@ void OsuOptionsMenu::syncTimingAudio(const OsuTimingAudioSettings::Values &value
 	m_timingAudioWidth = mode >= 0 && mode <= 2 ? (int)mode : 0;
 	m_timingAudioWidthButton->setText(UString::format("Silent width: %s", timingWidthNames[m_timingAudioWidth]));
 	m_timingAudioEditState = 0;
+	m_timingAudioSetupNextUpdate = 0;
+}
+
+OsuTimingAudioView OsuOptionsMenu::appliedTimingAudioView(const OsuTimingAudioSettings::Values &applied) const
+{
+	OsuTimingAudioView view;
+	if (applied.at("osu_timing_audio") == "0")
+		view.evaluation.phase = OsuTimingAudioEvaluation::OFF;
+	else if (m_osu->isInPlayMode())
+	{
+		const auto *beatmap = dynamic_cast<const OsuBeatmapStandard*>(m_osu->getSelectedBeatmap());
+		if (beatmap != NULL && beatmap->getMusic() != NULL)
+		{
+			const auto *duration = convar->getConVarByName("osu_hud_hiterrorbar_timing_audio_recent_seconds");
+			const double seconds = OsuTimingAudioHUD::recentDuration(duration->getFloat());
+			view = beatmap->getTimingAudioView(OsuTimingAudioView::AUDIO_ESTIMATE, seconds, true);
+		}
+	}
+	return view;
+}
+
+void OsuOptionsMenu::onCopyTimingAudioSetup()
+{
+	const auto applied = OsuTimingAudioSettings::capture();
+	const auto view = appliedTimingAudioView(applied);
+	const auto mode = OsuTimingAudioView::fromSetting(convar->getConVarByName("osu_hud_hiterrorbar_timing_audio_view")->getInt());
+	std::string text = OsuTimingAudioSetup::copyText(applied, view, mode, timingAudioDraft() != applied);
+	const auto enabled = [](const char *key) { return convar->getConVarByName(key)->getBool(); };
+	const auto *beatmap = m_osu->isInPlayMode() ? dynamic_cast<const OsuBeatmapStandard*>(m_osu->getSelectedBeatmap()) : NULL;
+	const char *hudStatus = "eligible to draw selected view";
+	if (!enabled("osu_hud_hiterrorbar_timing_audio")) hudStatus = "timing overlay disabled";
+	else if (!enabled("osu_draw_hiterrorbar")) hudStatus = "hit error bar disabled";
+	else if (!enabled("osu_draw_hud") && enabled("osu_hud_shift_tab_toggles_everything")) hudStatus = "HUD hidden";
+	else if (!enabled("osu_draw_hiterrorbar_bottom") && !enabled("osu_draw_hiterrorbar_top")
+		&& !enabled("osu_draw_hiterrorbar_left") && !enabled("osu_draw_hiterrorbar_right")) hudStatus = "no bar placements enabled";
+	else if (view.evaluation.phase == OsuTimingAudioEvaluation::OFF) hudStatus = "timing audio off";
+	else if (beatmap == NULL || view.speed <= 0) hudStatus = "waiting for gameplay";
+	else if (beatmap->isSpinnerActive() && enabled("osu_hud_hiterrorbar_hide_during_spinner")) hudStatus = "bar hidden during spinner";
+	else if (convar->getConVarByName("osu_hud_hiterrorbar_alpha")->getFloat() <= 0
+		|| convar->getConVarByName("osu_hud_hiterrorbar_timing_audio_alpha")->getFloat() <= 0) hudStatus = "overlay opacity is zero";
+	text += std::string("HUD status ") + hudStatus + "\n";
+	const auto *duration = convar->getConVarByName("osu_hud_hiterrorbar_timing_audio_recent_seconds");
+	text += "Recent window duration " + OsuTimingAudioSetup::number(OsuTimingAudioHUD::recentDuration(duration->getFloat())) + " s\n";
+	text += "\nMcOsu version " + std::string(Osu::version->getString().toUtf8()) + "\n";
+	text += "HUD/volume preferences (separate from named profiles)\n";
+	const auto appendSetting = [&text](const char *name)
+	{
+		text += std::string(name) + " = " + convar->getConVarByName(name)->getString().toUtf8() + "\n";
+	};
+	for (const auto &control : OsuTimingAudioHudControls::controls()) appendSetting(control.name);
+	for (const char *name : {"osu_draw_hud", "osu_hud_scale", "osu_hud_shift_tab_toggles_everything",
+		"osu_volume_master", "osu_volume_master_inactive"}) appendSetting(name);
+	env->setClipBoardText(text.c_str());
+	m_osu->getNotificationOverlay()->addNotification("Applied timing setup copied.", 0xffffffff, false, 1.5f);
 }
 
 OsuTimingAudioSettings::Values OsuOptionsMenu::timingAudioDraft() const
@@ -159,6 +270,14 @@ void OsuOptionsMenu::updateTimingAudioEditor()
 {
 	const auto draft = timingAudioDraft();
 	const auto current = OsuTimingAudioSettings::capture();
+	if (engine->getTime() >= m_timingAudioSetupNextUpdate)
+	{
+		const auto summary = OsuTimingAudioSetup::summarize(current, appliedTimingAudioView(current));
+		m_timingAudioSetupReference->setText(summary.reference.c_str());
+		m_timingAudioSetupBand->setText(summary.band.c_str());
+		m_timingAudioSetupLearning->setText(summary.spread.c_str());
+		m_timingAudioSetupNextUpdate = engine->getTime() + 0.25;
+	}
 	int editState = draft != current ? 1 : 0;
 	for (const auto &spec : OsuTimingAudioSettings::specs())
 		if (spec.restarts && draft.at(spec.name) != current.at(spec.name)) editState = 2;
@@ -171,19 +290,64 @@ void OsuOptionsMenu::updateTimingAudioEditor()
 	}
 	m_timingAudioMuteButton->setText(convar->getConVarByName("osu_timing_audio_muted")->getBool()
 		? "Unmute cues (keep learning)" : "Mute cues (keep learning)");
+	const bool tooltipsAllowed = m_options->isMouseInside() && !m_contextMenu->isVisible();
+	const auto &visible = m_options->getContainer()->getElements();
+	const auto hovered = [&](CBaseUIElement *element)
+	{
+		return tooltipsAllowed && element->isMouseInside() && std::find(visible.begin(), visible.end(), element) != visible.end();
+	};
+	const auto tooltip = [&](const UString &help, const UString &range, const char *inactive, const char *apply)
+	{
+		auto *overlay = m_osu->getTooltipOverlay();
+		overlay->begin();
+		overlay->addLine(help);
+		if (range.length() > 0) overlay->addLine(range);
+		if (inactive != NULL) overlay->addLine(inactive);
+		if (apply != NULL) overlay->addLine(apply);
+		overlay->end();
+	};
+	bool tooltipShown = false;
 	for (const TimingAudioField &field : m_timingAudioFields)
 	{
 		if (field.textbox == NULL) continue;
 		const std::string key = field.spec->name;
-		bool enabled = true;
-		if (key == "osu_timing_audio_target") enabled = draft.at("osu_timing_audio_recent") == "0";
-		if (key == "osu_timing_audio_deadzone") enabled = m_timingAudioWidth != 1;
-		if (key == "osu_timing_audio_deadzone_fraction") enabled = m_timingAudioWidth == 1;
-		if (key.find("osu_timing_audio_deadzone_adaptive_") == 0) enabled = m_timingAudioWidth == 2;
-		if (key == "osu_timing_audio_half_life_seconds") enabled = draft.at("osu_timing_audio_fixed_hits") == "0";
-		if (key == "osu_timing_audio_half_life_hits") enabled = draft.at("osu_timing_audio_fixed_hits") == "1";
-		field.textbox->setEnabled(enabled);
+		const char *inactive = NULL;
+		if (key == "osu_timing_audio_target" && draft.at("osu_timing_audio_recent") != "0") inactive = "Select Beatmap reference.";
+		else if (key == "osu_timing_audio_deadzone" && m_timingAudioWidth == 1) inactive = "Select Fixed milliseconds or Adaptive spread.";
+		else if (key == "osu_timing_audio_deadzone_fraction" && m_timingAudioWidth != 1) inactive = "Select Map-relative fraction.";
+		else if (key.find("osu_timing_audio_deadzone_adaptive_") == 0 && m_timingAudioWidth != 2) inactive = "Select Adaptive spread.";
+		else if (key.find("osu_timing_audio_idle_") == 0)
+		{
+			if (m_timingAudioWidth != 2) inactive = "Select Adaptive spread.";
+			else if (draft.at("osu_timing_audio_idle_forgiveness") != "1") inactive = "Enable Widen adaptive band during idle.";
+		}
+		else if (key == "osu_timing_audio_silent_startup_hits")
+		{
+			if (draft.at("osu_timing_audio_recent") != "1") inactive = "Select Recent reference.";
+			else if (draft.at("osu_timing_audio_silent_startup") != "1") inactive = "Enable Mute Recent during startup.";
+		}
+		else if (key == "osu_timing_audio_half_life_seconds" && draft.at("osu_timing_audio_fixed_hits") != "0") inactive = "Select time adaptation.";
+		else if (key == "osu_timing_audio_half_life_hits" && draft.at("osu_timing_audio_fixed_hits") != "1") inactive = "Select hit-count adaptation.";
+		field.textbox->setEnabled(inactive == NULL);
+		UString label = field.spec->label;
+		if (inactive != NULL) label.append(" (inactive)");
+		if (field.label->getText() != label) field.label->setText(label);
+		if (!tooltipShown && (hovered(field.label) || hovered(field.textbox)))
+		{
+			const auto &help = convar->getConVarByName(field.spec->name)->getHelpstring();
+			const UString range = field.spec->type == OsuTimingAudioSettings::FILENAME ? UString()
+				: UString::format("Range %.6g to %.6g", (double)field.spec->min, (double)field.spec->max);
+			tooltip(help, range, inactive, field.spec->restarts ? "Apply resets learning." : "Apply keeps learning.");
+			tooltipShown = true;
+		}
 	}
+	if (tooltipsAllowed && !tooltipShown)
+		for (const OPTIONS_ELEMENT &row : m_elements)
+			if (row.timingHudHelp != NULL && (hovered(row.elements[0]) || hovered(row.elements[1])))
+			{
+				tooltip(row.timingHudHelp, UString(), NULL, "Applies immediately.");
+				break;
+			}
 }
 
 void OsuOptionsMenu::timingAudioStatus(UString text, bool error)
