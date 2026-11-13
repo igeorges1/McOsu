@@ -16,7 +16,7 @@ from verification_process import digest, execute, nonmodal
 
 ROOT = Path(__file__).resolve().parents[1]
 SUITES = tuple("OsuTimingAudio" + name + "Test" for name in
-               ("Band", "Boundary", "HUD", "Idle", "Reference", "Settings", "Setup", "State"))
+               ("Band", "Boundary", "HUD", "Idle", "Presentation", "Reference", "Settings", "Setup", "State"))
 FLAGS = ["-std=c++11", "-O2", "-Wall", "-Wextra", "-Werror", "-pedantic", "-UNDEBUG"]
 CASE = "preroll-history"
 
@@ -106,8 +106,9 @@ class Run:
                                  "branch": self.git("branch", "--show-current"),
                                  "status": self.git("status", "--porcelain=v1", "--untracked-files=all")}
         actual = {p.stem for p in (ROOT / "tests").glob("OsuTimingAudio*Test.cpp")}
-        require(actual == set(SUITES), f"Expected exactly eight registered suites; missing={set(SUITES)-actual}, unregistered={actual-set(SUITES)}")
+        require(actual == set(SUITES), f"Expected {len(SUITES)} registered suites; missing={set(SUITES)-actual}, unregistered={actual-set(SUITES)}")
         inputs = list((ROOT / "src/App/Osu").glob("OsuTimingAudio*.h"))
+        inputs += [ROOT / "src/App/Osu/OsuTimingCuePresentation.h"]
         for name in ("Evaluation", "RecentWindow", "PlayClock", "HUD", "Reference", "Settings", "HudControls", "Setup", "State"):
             require((ROOT / "src/App/Osu" / ("OsuTimingAudio" + name + ".h")).is_file(), "Missing production header: " + name)
         inputs += [ROOT / "tests" / (suite + ".cpp") for suite in SUITES]

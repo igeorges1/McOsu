@@ -5,7 +5,7 @@
 
 namespace OsuTimingAudioHudControls
 {
-	enum Group { CAPTURE, TIMING, APPEARANCE, BAR };
+	enum Group { CAPTURE, PERIPHERAL, PERIPHERAL_STYLE, TIMING, APPEARANCE, BAR };
 	enum Kind { Toggle, View, Decimal, Precise, Integer, BarScale, URScale, CaptureKey };
 	struct Control { const char *name, *label; Group group; Kind kind; double min, max; const char *help; };
 
@@ -18,6 +18,23 @@ namespace OsuTimingAudioHudControls
 			{"osu_timing_capture_frame_tail", "Completed intervals after mark", CAPTURE, Integer, 0, 120, "Collect at most this many post-mark app updates, for up to two seconds."},
 			{"osu_timing_capture_screenshot", "Save screenshot when marking a problem", CAPTURE, Toggle, 0, 1, "Reads a matching draw on the render thread. Image encoding and export run in the background on Windows."},
 			{"osu_timing_capture_mark_key", "Mark problem key", CAPTURE, CaptureKey, 0, 0, "Choose an unused key or use the Mark problem button. Zero is unbound."},
+
+			{"osu_timing_visual_enabled", "Show peripheral timing cue", PERIPHERAL, Toggle, 0, 1, "Trains with audio off or muted. Left means hit later; right means hit earlier."},
+			{"osu_timing_visual_invert", "Invert peripheral cue sides", PERIPHERAL, Toggle, 0, 1, "Swap the visual directions independently of audio."},
+			{"osu_timing_visual_variable", "Vary peripheral cue strength", PERIPHERAL, Toggle, 0, 1, "Brightness grows with distance outside the used silent band. Off uses fixed strength."},
+			{"osu_timing_visual_saturation_ms", "Full strength excess (ms)", PERIPHERAL, Decimal, 1, 200, "Real-play milliseconds beyond the used band for full variable brightness."},
+			{"osu_timing_visual_min_strength", "Minimum variable strength", PERIPHERAL, Decimal, 0, 1, "Fraction of peak opacity just outside the silent band. Applies in variable mode."},
+			{"osu_timing_visual_hold_seconds", "Peripheral hold (seconds)", PERIPHERAL, Decimal, 0, 0.5, "Real seconds at the initial brightness before fading."},
+			{"osu_timing_visual_fade_seconds", "Peripheral fade (seconds)", PERIPHERAL, Decimal, 0.05, 1, "Real seconds for the cue to fade. A newer directional hit replaces it."},
+			{"osu_timing_visual_opacity", "Peripheral peak opacity", PERIPHERAL_STYLE, Decimal, 0, 1, "Maximum cue opacity. Zero hides the visual cue."},
+			{"osu_timing_visual_width", "Peripheral cue width fraction", PERIPHERAL_STYLE, Precise, 0.005, 0.15, "Fraction of screen width, capped by the available playfield margin."},
+			{"osu_timing_visual_height", "Peripheral cue height fraction", PERIPHERAL_STYLE, Decimal, 0.05, 1, "Fraction of screen height."},
+			{"osu_timing_visual_inset", "Peripheral edge inset fraction", PERIPHERAL_STYLE, Precise, 0, 0.15, "Fraction of screen width inward from the edge. A large inset may leave no room."},
+			{"osu_timing_visual_center", "Peripheral vertical center fraction", PERIPHERAL_STYLE, Decimal, 0, 1, "Vertical position from top to bottom; adjust around skin and input overlays."},
+			{"osu_timing_visual_outside_playfield", "Keep cues outside the playfield", PERIPHERAL_STYLE, Toggle, 0, 1, "Off permits a viewport-edge cue to overlap the playfield when margins are narrow."},
+			{"osu_timing_visual_r", "Peripheral cue red", PERIPHERAL_STYLE, Integer, 0, 255, "Red channel for the shared peripheral cue color."},
+			{"osu_timing_visual_g", "Peripheral cue green", PERIPHERAL_STYLE, Integer, 0, 255, "Green channel for the shared peripheral cue color."},
+			{"osu_timing_visual_b", "Peripheral cue blue", PERIPHERAL_STYLE, Integer, 0, 255, "Blue channel for the shared peripheral cue color."},
 
 			{"osu_hud_hiterrorbar_timing_audio", "Timing audio on hit error bar", TIMING, Toggle, 0, 1, "Needs timing audio and a visible hit error bar."},
 			{"osu_hud_hiterrorbar_timing_audio_caption", "Timing status caption", TIMING, Toggle, 0, 1, "Show view, reference and availability above the bar."},

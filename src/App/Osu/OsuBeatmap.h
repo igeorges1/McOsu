@@ -25,6 +25,7 @@ class OsuSkin;
 class OsuHitObject;
 class OsuTimingAudioFeedback;
 class OsuTimingAudioCapture;
+namespace OsuTimingCuePresentation { struct Pulse; }
 
 class OsuDatabaseBeatmap;
 
@@ -93,6 +94,8 @@ public:
 		const std::string &metadata, double recentSeconds, bool &sufficient);
 	unsigned long long getTimingCaptureEpoch() const;
 	bool snapshotTimingCapture(OsuTimingAudioCapture &snapshot, double recentSeconds);
+	OsuTimingCuePresentation::Pulse getPeripheralTimingPulse() const;
+	void clearPeripheralTimingPulse();
 	void unloadMusic() {unloadMusicInt();}
 	void setVolume(float volume);
 	void setSpeed(float speed);

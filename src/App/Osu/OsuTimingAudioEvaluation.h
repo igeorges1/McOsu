@@ -10,7 +10,7 @@
 struct OsuTimingAudioEvaluation
 {
 	enum Phase { OFF, WAITING, INVALID, WARMUP, GATED, ACTIVE };
-	enum Output { NO_ISSUE, MUTED, CUE_UNAVAILABLE, PLAY_FAILED, PLAYED };
+	enum Output { NO_ISSUE, MUTED, CUE_UNAVAILABLE, PLAY_FAILED, PLAYED, AUDIO_DISABLED };
 	struct Range
 	{
 		double lower = std::numeric_limits<double>::quiet_NaN();
@@ -24,6 +24,8 @@ struct OsuTimingAudioEvaluation
 	bool fixedFallback = false;
 	Output output = NO_ISSUE;
 	int classifiedCue = 0; // -1 early, +1 late
+	double excessMS = 0;
+	double requestedPan = std::numeric_limits<double>::quiet_NaN();
 	// NaN marks geometry that was unavailable for the evaluation.
 	double referenceMapMS = std::numeric_limits<double>::quiet_NaN();
 	double learnedMeanMapMS = std::numeric_limits<double>::quiet_NaN();

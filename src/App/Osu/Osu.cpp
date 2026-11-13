@@ -68,6 +68,7 @@ static const char *const timingCaptureSource = "unknown";
 #endif
 extern ConVar osu_timing_capture_enabled, osu_timing_capture_screenshot, osu_timing_capture_mark_key;
 extern ConVar osu_timing_capture_performance, osu_timing_capture_frame_history, osu_timing_capture_frame_tail;
+extern ConVar osu_timing_visual_enabled;
 #include "OsuBeatmapStandard.h"
 #include "OsuBeatmapMania.h"
 
@@ -644,6 +645,8 @@ void Osu::draw(Graphics *g)
 
 		if (!isFPoSu || isFPoSu3d)
 			m_hud->draw(g);
+		if (osu_timing_visual_enabled.getBool())
+			m_hud->drawPeripheralTimingCue(g, dynamic_cast<OsuBeatmapStandard *>(getSelectedBeatmap()));
 
 		// quick retry fadeout overlay
 		if (m_fQuickRetryTime != 0.0f && m_bQuickRetryDown)
@@ -1887,7 +1890,8 @@ void Osu::markTimingCapture()
 	if (m_pendingTimingCapture || m_captureExport.busy())
 		return fail("A capture is still being collected or saved.");
 	const bool performance = osu_timing_capture_performance.getBool() && getInstanceID() == 0;
-	const bool timing = osu_timing_capture_enabled.getBool() && convar->getConVarByName("osu_timing_audio")->getBool();
+	const bool timing = osu_timing_capture_enabled.getBool()
+		&& (convar->getConVarByName("osu_timing_audio")->getBool() || osu_timing_visual_enabled.getBool());
 	if (!performance && !timing) return fail("Enable performance capture or timing debug capture first.");
 	auto *map = isInPlayMode() && !isInVRMode() && getInstanceID() == 0
 		? dynamic_cast<OsuBeatmapStandard *>(getSelectedBeatmap()) : nullptr;
@@ -1941,6 +1945,7 @@ void Osu::markTimingCapture()
 			<< "\nobserved_hud_reference_map_ms=" << evaluation.referenceMapMS
 			<< "\nobserved_hud_silent_map_ms=" << evaluation.silentMapMS.lower << ',' << evaluation.silentMapMS.upper
 			<< "\nrecent_window_seconds=" << recent << '\n'
+			<< "peripheral_status=" << m_hud->getPeripheralTimingStatus(map) << '\n'
 			<< OsuTimingAudioSetup::copyText(applied, map->getTimingAudioView(OsuTimingAudioView::AUDIO_ESTIMATE, recent, true), hudMode, false);
 		for (const auto &control : OsuTimingAudioHudControls::controls())
 			metadata << control.name << '=' << convar->getConVarByName(control.name)->getString().toUtf8() << '\n';
@@ -2322,6 +2327,8 @@ bool Osu::isInMultiplayer()
 	return m_multiplayer->isInMultiplayer();
 }
 
+bool Osu::isFPoSuEnabled() const { return m_osu_mod_fposu_ref->getBool(); }
+
 bool Osu::shouldFallBackToLegacySliderRenderer()
 {
 	return osu_force_legacy_slider_renderer.getBool()
@@ -2579,6 +2586,7 @@ void Osu::onFocusGained()
 void Osu::onFocusLost()
 {
 	m_timingCaptureHeldKey = 0;
+	if (isInPlayMode() && getSelectedBeatmap() != nullptr) getSelectedBeatmap()->clearPeripheralTimingPulse();
 	if (isInPlayMode() && !getSelectedBeatmap()->isPaused() && osu_pause_on_focus_loss.getBool())
 	{
 		if (!isInMultiplayer())

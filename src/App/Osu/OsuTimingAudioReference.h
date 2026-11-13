@@ -27,11 +27,22 @@ public:
 		if (halfWidth == 0) center = stored(center);
 		return {stored(center - halfWidth), stored(center + halfWidth)};
 	}
-	static int classify(double value, long double center, long double halfWidth)
+	static int classify(double value, long double center, long double halfWidth, double *excess = nullptr)
 	{
+		if (excess) *excess = 0;
 		if (!std::isfinite(value) || !std::isfinite(center) || !std::isfinite(halfWidth) || halfWidth < 0) return 0;
 		const Band edges = band(center, halfWidth);
-		return value < edges.lower ? -1 : value > edges.upper ? 1 : 0;
+		if (value < edges.lower)
+		{
+			if (excess) *excess = edges.lower - value;
+			return -1;
+		}
+		if (value > edges.upper)
+		{
+			if (excess) *excess = value - edges.upper;
+			return 1;
+		}
+		return 0;
 	}
 
 	static bool truncateWindow(double value, long &edge)

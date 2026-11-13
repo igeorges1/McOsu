@@ -190,7 +190,7 @@ static void replay(std::istream &input, const std::string &source)
 		}
 		case Capture::OUTPUT:
 			require(needsOutput, "Output observation without accepted hit");
-			integer(v[0], OsuTimingAudioEvaluation::PLAYED);
+			integer(v[0], OsuTimingAudioEvaluation::AUDIO_DISABLED);
 			integer(v[3], 1); integer(v[4], 1);
 			needsOutput = false;
 			break;
