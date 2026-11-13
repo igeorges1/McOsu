@@ -102,6 +102,8 @@ and human play, retain their separate evidence and limits.
 
 The independent [runtime tooling workflow](https://github.com/igeorges1/McOsu/blob/3c69a2a4e374a24bda8a3c9574e772ab85241b30/tools/runtime/README.md) already has
 its own supported tests: `python -m unittest discover -s tools/runtime/tests -v`.
+Run that separate command from the matching complete tooling checkout, not this
+game-stack checkout; runtime product files are not duplicated here.
 It is separate from this profile and is not rerun here. Profiles are a small
 explicit dispatch in `tools/verify.py`, not automatic discovery of arbitrary code.
 
