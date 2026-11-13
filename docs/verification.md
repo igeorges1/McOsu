@@ -100,7 +100,7 @@ registration together when adding/removing tests. Product behavior is unchanged.
 Other boundaries, including production adapters, framebuffer probes, device/audio
 and human play, retain their separate evidence and limits.
 
-The independent [runtime tooling workflow](https://github.com/igeorges1/McOsu/blob/c977662847c422b2f435774897a18a702bc0a690/tools/runtime/README.md) already has
+The independent [runtime tooling workflow](https://github.com/igeorges1/McOsu/blob/3c69a2a4e374a24bda8a3c9574e772ab85241b30/tools/runtime/README.md) already has
 its own supported tests: `python -m unittest discover -s tools/runtime/tests -v`.
 It is separate from this profile and is not rerun here. Profiles are a small
 explicit dispatch in `tools/verify.py`, not automatic discovery of arbitrary code.

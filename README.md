@@ -2,7 +2,7 @@
 
 Timing/HUD software checks and the reusable regression command are documented in
 [Verification](docs/verification.md). Build/runtime tools have a separate
-[guide on the merged fork foundation](https://github.com/igeorges1/McOsu/blob/c977662847c422b2f435774897a18a702bc0a690/tools/runtime/README.md).
+[guide on the merged fork foundation](https://github.com/igeorges1/McOsu/blob/3c69a2a4e374a24bda8a3c9574e772ab85241b30/tools/runtime/README.md).
 
 **[DOWNLOAD > https://github.com/McKay42/McOsu/releases](https://github.com/McKay42/McOsu/releases)**
 
@@ -21,7 +21,7 @@ Note that Linux and macOS support is not as polished as Windows, and some functi
 See the [timing audio system map](docs/timing-audio.md) for the experimental cues, live HUD, and tuning controls in this source tree.
 
 Repeatable Windows builds and managed runtimes are documented in the
-[merged fork tooling guide](https://github.com/igeorges1/McOsu/blob/c977662847c422b2f435774897a18a702bc0a690/tools/runtime/README.md).
+[merged fork tooling guide](https://github.com/igeorges1/McOsu/blob/3c69a2a4e374a24bda8a3c9574e772ab85241b30/tools/runtime/README.md).
 Those independent tooling files are merged in the fork default branch; they are
 not duplicated into this dependent timing feature branch.
 
