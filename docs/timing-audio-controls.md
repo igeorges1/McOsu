@@ -48,8 +48,11 @@ Applies immediately and saves to ordinary Options config.
 | Control | Key | Default | Options range | Effect |
 | --- | --- | --- | --- | --- |
 | Capture timing debug evidence | `osu_timing_capture_enabled` | `false` | On / Off | Opt-in local recording. Enable before retrying or starting a map for a replayable prefix. |
-| Save screenshot when marking a problem | `osu_timing_capture_screenshot` | `true` | On / Off | Saves a separate gameplay frame on the next draw. The timing report can be used without a screenshot. |
-| Mark problem key | `osu_timing_capture_mark_key` | `0` | Key binding or 0 (unbound) | Choose an unused key for standard play, or use the Mark problem button. Zero is unbound. |
+| Record app frame timing | `osu_timing_capture_performance` | `false` | On / Off | Record raw app update cadence and CPU-side update and draw time. Works with timing audio off. |
+| Completed intervals before mark | `osu_timing_capture_frame_history` | `1024` | `120`–`4096` | Performance history in app updates. Changing the size starts a new history. |
+| Completed intervals after mark | `osu_timing_capture_frame_tail` | `30` | `0`–`120` | Collect at most this many post-mark app updates, for up to two seconds. |
+| Save screenshot when marking a problem | `osu_timing_capture_screenshot` | `true` | On / Off | Reads a matching draw on the render thread. Image encoding and export run in the background on Windows. |
+| Mark problem key | `osu_timing_capture_mark_key` | `0` | Key binding or 0 (unbound) | Choose an unused key or use the Mark problem button. Zero is unbound. |
 
 ## Timing Audio HUD
 

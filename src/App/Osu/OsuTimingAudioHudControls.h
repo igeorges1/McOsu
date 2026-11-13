@@ -13,8 +13,11 @@ namespace OsuTimingAudioHudControls
 	{
 		static const std::vector<Control> list = {
 			{"osu_timing_capture_enabled", "Capture timing debug evidence", CAPTURE, Toggle, 0, 1, "Opt-in local recording. Enable before retrying or starting a map for a replayable prefix."},
-			{"osu_timing_capture_screenshot", "Save screenshot when marking a problem", CAPTURE, Toggle, 0, 1, "Saves a separate gameplay frame on the next draw. The timing report can be used without a screenshot."},
-			{"osu_timing_capture_mark_key", "Mark problem key", CAPTURE, CaptureKey, 0, 0, "Choose an unused key for standard play, or use the Mark problem button. Zero is unbound."},
+			{"osu_timing_capture_performance", "Record app frame timing", CAPTURE, Toggle, 0, 1, "Record raw app update cadence and CPU-side update and draw time. Works with timing audio off."},
+			{"osu_timing_capture_frame_history", "Completed intervals before mark", CAPTURE, Integer, 120, 4096, "Performance history in app updates. Changing the size starts a new history."},
+			{"osu_timing_capture_frame_tail", "Completed intervals after mark", CAPTURE, Integer, 0, 120, "Collect at most this many post-mark app updates, for up to two seconds."},
+			{"osu_timing_capture_screenshot", "Save screenshot when marking a problem", CAPTURE, Toggle, 0, 1, "Reads a matching draw on the render thread. Image encoding and export run in the background on Windows."},
+			{"osu_timing_capture_mark_key", "Mark problem key", CAPTURE, CaptureKey, 0, 0, "Choose an unused key or use the Mark problem button. Zero is unbound."},
 
 			{"osu_hud_hiterrorbar_timing_audio", "Timing audio on hit error bar", TIMING, Toggle, 0, 1, "Needs timing audio and a visible hit error bar."},
 			{"osu_hud_hiterrorbar_timing_audio_caption", "Timing status caption", TIMING, Toggle, 0, 1, "Show view, reference and availability above the bar."},
