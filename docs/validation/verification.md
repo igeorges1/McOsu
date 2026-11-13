@@ -27,3 +27,21 @@ looked for the nested contract marker in outer stdout; it failed truthfully,
 was retained, and was corrected to require the existing outer success line and
 four-check completion. Product/runner/test code was not changed for that correction.
 These are local preparation results, not independent acceptance or hosted success.
+
+## Publication YAML ingestion correction
+
+The original publication head `11c3d0687514d55fdeccd095a74a942a8f12b8a4`
+passed local commands and a PowerShell command-syntax check. That check did not
+parse the surrounding YAML. Its plain `run:` scalar contained colon-space in
+`"PASS runner-contract: exit=..."`; shell quotes do not quote a YAML scalar.
+The timing workflow was not registered by GitHub, so there was no hosted timing
+run or successful check at that head.
+
+The correction uses a folded block scalar for that one command. PyYAML6.0.2
+rejects the exact original at line28/column122 with the declared mapping-value
+diagnostic and accepts the correction, preserving the complete shell command.
+The original failure and corrected parser receipts remain separate. Earlier
+full26/28, failure-contract and consumer results retain their original source
+identities; no product, test, runner or guard changes require repeating them.
+YAML parsing alone does not prove GitHub ingestion or job execution: the publisher
+must inspect actual hosted runs after the correction is pushed.

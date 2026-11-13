@@ -25,7 +25,8 @@ jobs:
       - name: Full registered helper profile
         run: python .github/scripts/run_guarded.py --label timing --timeout 180 --contains "COMPLETE failures=0 checks=" -- python tools/verify.py --toolchain "$env:MCOSU_TOOLCHAIN"
       - name: Runner failure contracts
-        run: python .github/scripts/run_guarded.py --label runner-contract --timeout 120 --contains "PASS runner-contract: exit=0x00000000 timeout=False" --contains "COMPLETE failures=0 checks=4" -- python tools/verify.py --toolchain "$env:MCOSU_TOOLCHAIN" --profile runner-contract
+        run: >-
+          python .github/scripts/run_guarded.py --label runner-contract --timeout 120 --contains "PASS runner-contract: exit=0x00000000 timeout=False" --contains "COMPLETE failures=0 checks=4" -- python tools/verify.py --toolchain "$env:MCOSU_TOOLCHAIN" --profile runner-contract
       - name: Retain readable success/failure evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
