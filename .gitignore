@@ -1,0 +1,5 @@
+/.ci-runs/
+/.verification-runs/
+/.github/scripts/__pycache__/
+/tools/__pycache__/
+/tools/runtime/__pycache__/
