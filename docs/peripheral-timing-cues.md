@@ -1,0 +1,20 @@
+# Peripheral timing cues
+
+Open **Options → Timing Audio Experiment**. **Peripheral Timing Cue** controls the visual channel. **Peripheral Cue Appearance and Layout** controls its opacity, color and placement. **Timing Audio Cues and Mute** contains audio routing. The [control reference](timing-audio-controls.md) lists every key, default, range and effect.
+
+| Decision against the selected Recent or Beatmap reference | Default cue side | Correction |
+| --- | --- | --- |
+| Early | Left | Hit later |
+| Late | Right | Hit earlier |
+
+These are timing corrections relative to the chosen target. They do not estimate tempo. Both channels use the accepted hit's existing pre-learning decision and its exact used silent interval. Warmup, the 300 gate and inclusive endpoints apply to both channels. The visual magnitude is the excess outside that interval, in real-play milliseconds. In variable mode, brightness interpolates linearly from the configured minimum strength to full strength at the configured saturation distance. Fixed mode uses full strength. Peak opacity scales either mode.
+
+Visual and audio each enable the shared learner. With audio disabled, visual-only hits do not load or play cue files. A device restart can still reload cues already owned by the audio channel. Muting audio, zero gain or a missing audio file leaves the visual cue available. Turning both channels off resets timing when the adapter updates. Enabling or changing presentation settings preserves the learner while either channel stays active.
+
+The visual cue uses one latest directional hit. Another directional hit replaces it. Silent or gated hits do not refresh it. The cue holds and fades using real elapsed seconds. Current style, timing and side settings apply to the latest pulse until it is replaced or cleared. Increasing the duration can make that pulse visible again if its age falls within the new duration. The visual channel clears on pause, loading, countdown, scheduled continue, seek, retry, map stop, focus loss, disable, and learner generation changes. Standard desktop gameplay is the supported visual scene.
+
+**Keep cues outside the playfield** fits the cue beyond the horizontal bounds of the Standard playfield after rotation and `osu_playfield_stretch_x`, plus one scaled hitcircle radius on each side. This is a playfield estimate. Custom skin art, input overlays and additional hitobject effects can extend beyond it. A narrow margin can suppress the cue. Turn confinement off to allow a viewport-edge cue to overlap the playfield. Width, height, inset and vertical center are fractions of the game's viewport. The requested width fits into the remaining space after inset. The applied report shows the resulting cue width in pixels on each side when gameplay is active. Linear fade, one pulse, the shared RGB color fading to transparent at the inner edge, and viewport clipping are fixed presentation rules. Existing hit error bar and UR settings are independent.
+
+Audio stays centered by default. **Split timing audio left and right** requests full per-play pan. Its independent inversion swaps sides without changing which file is selected. The pinned BASS implementation hard-pans mono samples. With stereo files this acts as balance. A file with content only on the opposite channel can become silent. Use mono cue files for reliable one-ear routing. The backend can refuse playback or a pan operation, and device mixing can change what reaches the headphones. The requested pan and software playback result are reported separately. Draft cue preview remains centered.
+
+Audio routing and inversion save in named audio profiles. Earlier profiles default to centered and uninverted. Visual settings are immediate Options preferences outside audio profiles. Applied copy and marked reports include the settings and last hit's classified excess, requested pan and software playback status. The [capture reader](timing-capture.md) retains its exact-source causal model scope. It does not replay pixels or output audio.

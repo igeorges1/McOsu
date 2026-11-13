@@ -14,6 +14,7 @@
 #include "CBaseUIContainer.h"
 #include "Osu.h"
 #include "OsuBeatmapStandard.h"
+#include "OsuHUD.h"
 #include "OsuUIButton.h"
 #include "OsuUIContextMenu.h"
 #include "OsuTimingAudioSetup.h"
@@ -132,7 +133,13 @@ void OsuOptionsMenu::addTimingAudioOptions()
 		if (control.group != group)
 		{
 			group = control.group;
-			addSubSection(group == TIMING ? "Timing Audio HUD"
+			if (group == PERIPHERAL)
+			{
+				addSubSection("Peripheral Timing Cue");
+				addLabel("Visual-only practice keeps learning with timing audio off.");
+			}
+			else if (group == PERIPHERAL_STYLE) addSubSection("Peripheral Cue Appearance and Layout");
+			else addSubSection(group == TIMING ? "Timing Audio HUD"
 				: (group == APPEARANCE ? "Timing Overlay Appearance" : "Hit Error Bar Appearance and Layout"));
 		}
 		ConVar *var = convar->getConVarByName(control.name);
@@ -223,7 +230,7 @@ void OsuOptionsMenu::syncTimingAudio(const OsuTimingAudioSettings::Values &value
 OsuTimingAudioView OsuOptionsMenu::appliedTimingAudioView(const OsuTimingAudioSettings::Values &applied) const
 {
 	OsuTimingAudioView view;
-	if (applied.at("osu_timing_audio") == "0")
+	if (applied.at("osu_timing_audio") == "0" && !convar->getConVarByName("osu_timing_visual_enabled")->getBool())
 		view.evaluation.phase = OsuTimingAudioEvaluation::OFF;
 	else if (m_osu->isInPlayMode())
 	{
@@ -245,7 +252,7 @@ void OsuOptionsMenu::onCopyTimingAudioSetup()
 	const auto mode = OsuTimingAudioView::fromSetting(convar->getConVarByName("osu_hud_hiterrorbar_timing_audio_view")->getInt());
 	std::string text = OsuTimingAudioSetup::copyText(applied, view, mode, timingAudioDraft() != applied);
 	const auto enabled = [](const char *key) { return convar->getConVarByName(key)->getBool(); };
-	const auto *beatmap = m_osu->isInPlayMode() ? dynamic_cast<const OsuBeatmapStandard*>(m_osu->getSelectedBeatmap()) : NULL;
+	auto *beatmap = m_osu->isInPlayMode() ? dynamic_cast<OsuBeatmapStandard*>(m_osu->getSelectedBeatmap()) : NULL;
 	const char *hudStatus = "eligible to draw selected view";
 	if (!enabled("osu_hud_hiterrorbar_timing_audio")) hudStatus = "timing overlay disabled";
 	else if (!enabled("osu_draw_hiterrorbar")) hudStatus = "hit error bar disabled";
@@ -258,6 +265,7 @@ void OsuOptionsMenu::onCopyTimingAudioSetup()
 	else if (convar->getConVarByName("osu_hud_hiterrorbar_alpha")->getFloat() <= 0
 		|| convar->getConVarByName("osu_hud_hiterrorbar_timing_audio_alpha")->getFloat() <= 0) hudStatus = "overlay opacity is zero";
 	text += std::string("HUD status ") + hudStatus + "\n";
+	text += "Peripheral cue status " + m_osu->getHUD()->getPeripheralTimingStatus(beatmap) + "\n";
 	const auto *duration = convar->getConVarByName("osu_hud_hiterrorbar_timing_audio_recent_seconds");
 	text += "Recent window duration " + OsuTimingAudioSetup::number(OsuTimingAudioHUD::recentDuration(duration->getFloat())) + " s\n";
 	text += "\nMcOsu version " + std::string(Osu::version->getString().toUtf8()) + "\n";

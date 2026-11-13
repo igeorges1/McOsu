@@ -100,6 +100,8 @@ int main()
 	Settings::Profiles profiles; profiles[u8"Myuzs 対策"] = good; profiles["Recent quiet"] = good;
 	profiles["Recent quiet"]["osu_timing_audio_recent"] = "1";
 	profiles["Recent quiet"]["osu_timing_audio_muted"] = "1";
+	profiles["Recent quiet"]["osu_timing_audio_split_ears"] = "1";
+	profiles["Recent quiet"]["osu_timing_audio_invert_ears"] = "1";
 	const auto text = Settings::encode(profiles);
 	Settings::Profiles decoded; CHECK(Settings::decode(text, decoded).empty() && decoded == profiles);
 	std::string crlf;
@@ -126,6 +128,8 @@ int main()
 	CHECK(older.at("osu_timing_audio_idle_forgiveness") == "0");
 	CHECK(older.at("osu_timing_audio_adaptive_startup_maximum") == "0");
 	CHECK(older.at("osu_timing_audio_retain_failed_cue") == "1");
+	CHECK(older.at("osu_timing_audio_split_ears") == "0");
+	CHECK(older.at("osu_timing_audio_invert_ears") == "0");
 	CHECK(older.at("osu_timing_audio_startup_average_hits") == "8");
 	CHECK(older.at("osu_timing_audio_silent_startup_hits") == "8");
 	CHECK(older.at("osu_timing_audio_idle_grace_seconds") == "1");

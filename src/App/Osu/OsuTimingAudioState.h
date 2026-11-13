@@ -50,6 +50,7 @@ public:
 		double varianceMS2; // preceding population variance, before this hit
 		bool fixedFallback;
 		bool accepted;
+		double excessMS;
 	};
 
 	OsuTimingAudioState() { reset(); }
@@ -201,7 +202,7 @@ public:
 		if (!std::isfinite(window300MS) || window300MS < 0.0) return invalidEvaluation(recent);
 
 		Result current = {SILENT, pendingReset ? 0.0 : m_baselineMS, 0, pendingReset ? 0 : m_samples,
-			0, pendingReset ? 0.0 : m_varianceMS2, false, false};
+			0, pendingReset ? 0.0 : m_varianceMS2, false, false, 0};
 		long double mapHalfWidthMS = 0;
 		const double allowance = allowanceAt(config, playSeconds, pendingReset);
 		const volatile double halfWidthMS = bandHalfWidth(window, config, current, mapHalfWidthMS, allowance, status);
@@ -297,7 +298,7 @@ private:
 			}
 		}
 		Result result = {SILENT, m_baselineMS, recent ? errorMS - m_baselineMS : beatmapDeviationMS,
-			m_samples, m_config.deadZoneMS, m_varianceMS2, false, false};
+			m_samples, m_config.deadZoneMS, m_varianceMS2, false, false, 0};
 		if (m_config.bandMode != FIXED_MS)
 		{
 			// New widths and deviations use the same stored-double comparison,
@@ -326,13 +327,15 @@ private:
 				// Recent's learned quantities already live in real-play units.
 				// Beatmap geometry stays in map units until its endpoints are rounded.
 				result.cue = static_cast<Cue>(recent
-					? OsuTimingAudioReference::classify(OsuTimingAudioReference::stored(errorMS), m_baselineMS, result.halfWidthMS)
-					: OsuTimingAudioReference::classify(errorMapMS, targetMapMS, mapHalfWidthMS));
+					? OsuTimingAudioReference::classify(OsuTimingAudioReference::stored(errorMS), m_baselineMS, result.halfWidthMS, &result.excessMS)
+					: OsuTimingAudioReference::classify(errorMapMS, targetMapMS, mapHalfWidthMS, &result.excessMS));
+				if (!recent) result.excessMS /= window.speed;
 			}
 			else
 			{
 				if (result.deviationMS < -result.halfWidthMS) result.cue = EARLY;
 				else if (result.deviationMS > result.halfWidthMS) result.cue = LATE;
+				if (result.cue != SILENT) result.excessMS = std::abs(result.deviationMS) - result.halfWidthMS;
 			}
 		}
 
@@ -375,6 +378,7 @@ private:
 		evaluation.recent = recent;
 		evaluation.fixedFallback = result.fixedFallback;
 		evaluation.classifiedCue = result.cue;
+		evaluation.excessMS = result.excessMS;
 		const double meanMapMS = result.baselineMS * speed;
 		evaluation.setStatistics(result.precedingSamples, result.baselineMS, result.varianceMS2, speed);
 		if (!recent || result.precedingSamples > 0)

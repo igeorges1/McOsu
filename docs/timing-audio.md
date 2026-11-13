@@ -6,6 +6,8 @@ The optional [live timing debug capture](timing-capture.md) records the timing m
 
 [Performance capture](performance-capture.md) uses the same mark independently of timing audio. It records completed app update intervals and CPU-side phases, and exports them with the timing report and optional image through the bounded Windows worker.
 
+[Peripheral timing cues](peripheral-timing-cues.md) use the same hit decision as audio. Either channel can keep the shared learner active. Visual styling and side mapping are independent of audio routing. Confinement uses the Standard playfield's rotation, horizontal stretch and scaled hitcircle radius. The applied report gives the resulting cue width on each side.
+
 ```mermaid
 flowchart LR
     A["Manual circle or slider-head judgement"] --> B["Eligible accepted hits"]
@@ -18,8 +20,10 @@ flowchart LR
     I --> W
     W --> X["Exact inclusive silent interval"]
     R --> X
-    X --> Q["Warmup and 300 gate, mute and cue selection"]
-    Q --> S["Early or late sound request"]
+    X --> Q["Warmup and 300 gate → frozen early/late decision and excess"]
+    Q --> S["Audio enable, mute, cue file and per-play pan"]
+    Q --> J["Visual enable, side mapping, intensity and fade"]
+    G["Playfield bounds, viewport and cue placement"] --> J
     X --> H["Live HUD and applied readout"]
     B --> D["Rolling accepted-hit history"]
     I --> D
@@ -37,7 +41,7 @@ flowchart LR
 ## From input to a cue
 
 1. **Eligibility.** Standard gameplay sends manual 300, 100 and 50 circle/slider-head hits. Misses, misaims, strays, bodies, tails and spinners are outside this observation path. Auto, Relax, Autopilot, VR and secondary instances are excluded. Invalid timing samples (nonfinite error, invalid window or invalid rate) are rejected. A valid observation still updates timing when a cue is gated or muted, or when the chosen reference cannot resolve. Eligibility follows the gameplay seam and changes neither scoring nor judgement. [Beatmap judgement dispatch](../src/App/Osu/OsuBeatmap.cpp), [adapter and eligibility](../src/App/Osu/OsuTimingAudioFeedback.cpp)
-2. **Two clocks.** The learner uses real-play time derived from map position and rate. A qualifying scheduled rest is removed in full from that clock. Include slider bodies and spinners as scheduled activity, or use the **Long bodies/spinners count as breaks** switch to consider circle/head opportunities only. A hit can arrive early enough to qualify a rest before the music clock reaches the opportunity. **Restart after breaks** also controls learner restart on pause. The separate counted-play clock ages the idle band and rolling history through real rests, misses and other gameplay with no accepted hit. It freezes on pause, loading, countdown and scheduled continue. Ready accepted pre-roll hits are timestamped before the counted clock starts. Backward clock corrections use a high-water mark. Nonfinite timestamps break continuity. Explicit seek, retry and disabling timing audio reset the playback clock and history. Empty-section skip preserves both and adds no virtual play time. Its music-position jump goes through the existing learner gap policy. Learner-only resets preserve rolling observations. [Gap handling](../src/App/Osu/OsuTimingAudioState.h), [counted play](../src/App/Osu/OsuTimingAudioPlayClock.h), [game hooks](../src/App/Osu/OsuBeatmap.cpp)
+2. **Two clocks.** The learner uses real-play time derived from map position and rate. A qualifying scheduled rest is removed in full from that clock. Include slider bodies and spinners as scheduled activity, or use the **Long bodies/spinners count as breaks** switch to consider circle/head opportunities only. A hit can arrive early enough to qualify a rest before the music clock reaches the opportunity. **Restart after breaks** also controls learner restart on pause. The separate counted-play clock ages the idle band and rolling history through real rests, misses and other gameplay with no accepted hit. It freezes on pause, loading, countdown and scheduled continue. Ready accepted pre-roll hits are timestamped before the counted clock starts. Backward clock corrections use a high-water mark. Nonfinite timestamps break continuity. Explicit seek, retry and disabling both cue channels reset the playback clock and history. Empty-section skip preserves both and adds no virtual play time. Its music-position jump goes through the existing learner gap policy. Learner-only resets preserve rolling observations. [Gap handling](../src/App/Osu/OsuTimingAudioState.h), [counted play](../src/App/Osu/OsuTimingAudioPlayClock.h), [game hooks](../src/App/Osu/OsuBeatmap.cpp)
 3. **Learning and reference.** The startup running average gives equal weight to the first configured number of accepted hits. Thereafter the same population moments use either active seconds or accepted hit count for exponential weighting. One accepted hit establishes a mean. Two are required for a population SD display and the learned adaptive width. A time-weighted hit at the same effective learner time can have zero weight and still be accepted. Recent reference uses the preceding learned mean. Beatmap reference selects center or signed 300, 100 and 50 edges, with fractional targets interpolated. Rate and judgement windows determine the units. Changing reference preserves learning. Changing estimator, half-life, startup averaging or break detection resets it. [State and weighted moments](../src/App/Osu/OsuTimingAudioState.h), [reference and endpoints](../src/App/Osu/OsuTimingAudioReference.h)
 4. **Width and idle.** Fixed is a real-play millisecond half-width. Map-relative uses a fraction of the current 300 half-window. Adaptive scales the learned SD and clamps it to its configured minimum and maximum. Its first two hits use fixed width by default. The independent **Adaptive startup uses maximum** switch uses the configured cap for those two hits when bounds are valid. With idle widening off, unusable learned adaptive statistics fall back to fixed width. With idle widening on, unusable learned statistics make the band unavailable. A finite zero SD is valid. [Shared width resolver](../src/App/Osu/OsuTimingAudioState.h)
 5. **Classify, learn, recover.** After scheduled opportunity qualification, the model classifies against the pre-hit interval. Endpoints are inclusive. An outside hit is early or late relative to the target. The **300 gate** requires the preceding baseline inside the actual 300 window for either reference. Recent additionally requires a mean and can require a configurable number of accepted hits before sounding. A Recent warmup of zero still requires a mean. Once the hit is accepted it updates learning and uses a step of idle recovery, even during gate or mute. [Classifier and readiness](../src/App/Osu/OsuTimingAudioState.h)
@@ -60,7 +64,7 @@ With the trial defaults, a mature learner starting at zero reaches its cap after
 ## Applying, saving and maintaining the map
 
 The [supported verification command and coverage map](verification.md) run the
-eight timing/HUD helper suites, settings inventory and historical pre-roll case.
+nine timing/HUD helper suites, settings inventory and historical pre-roll case.
 Their receipts establish software state/geometry boundaries; native rendering,
 input, audio and human usefulness remain separate checks.
 
