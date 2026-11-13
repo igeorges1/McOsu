@@ -2313,7 +2313,7 @@ namespace
 		return OsuTimingAudioHUD::setting(var.getFloat(), fallback, minimum, maximum);
 	}
 
-	OsuTimingCuePresentation::Rect peripheralRect(const Osu *osu, OsuBeatmapStandard *beatmap, int side)
+	OsuTimingCuePresentation::Rect peripheralRect(const Osu *osu, const OsuBeatmapStandard *beatmap, int side, const ConVar &horizontalStretch)
 	{
 		const int width = osu->getScreenWidth(), height = osu->getScreenHeight();
 		double edge = side < 0 ? width : 0;
@@ -2322,10 +2322,8 @@ namespace
 			const auto field = beatmap->getPlayfieldSize();
 			const auto center = beatmap->getPlayfieldCenter();
 			static const auto *rotation = convar->getConVarByName("osu_playfield_rotation");
-			const double angle = (beatmap->getPlayfieldRotation() + rotation->getFloat()) * (std::acos(-1.0) / 180);
-			const double half = (std::abs(std::cos(angle)) * field.x + std::abs(std::sin(angle)) * field.y
-				+ beatmap->getHitcircleDiameter()) / 2;
-			edge = center.x + side * half;
+			edge = OsuTimingCuePresentation::playfieldEdge(side, center.x, field.x, field.y,
+				beatmap->getPlayfieldRotation() + rotation->getFloat(), horizontalStretch.getFloat(), beatmap->getHitcircleDiameter());
 		}
 		return OsuTimingCuePresentation::margin(side, width, height, edge, peripheralSetting(osu_timing_visual_width, .035, .005, .15),
 			peripheralSetting(osu_timing_visual_height, .45, .05, 1), peripheralSetting(osu_timing_visual_inset, .005, 0, .15),
@@ -2356,14 +2354,14 @@ namespace
 std::string OsuHUD::getPeripheralTimingStatus(OsuBeatmapStandard *beatmap) const
 {
 	if (const auto *reason = peripheralBlocker(m_osu, beatmap)) return reason;
-	const auto left = peripheralRect(m_osu, beatmap, -1);
-	const auto right = peripheralRect(m_osu, beatmap, 1);
+	const auto left = peripheralRect(m_osu, beatmap, -1, *m_osu_playfield_stretch_x_ref);
+	const auto right = peripheralRect(m_osu, beatmap, 1, *m_osu_playfield_stretch_x_ref);
 	const auto pulse = beatmap->getPeripheralTimingPulse();
 	const auto side = OsuTimingCuePresentation::side(pulse.direction, osu_timing_visual_invert.getBool());
-	const std::string margins = "left margin " + std::to_string(left.width) + " px, right margin " + std::to_string(right.width) + " px";
-	if (!(peripheralOpacity(pulse) > 0)) return "no visible pulse, " + margins;
-	if ((side < 0 ? left.width : right.width) <= 0) return "pulse suppressed by current layout, " + margins;
-	return std::string("eligible ") + (side < 0 ? "left" : "right") + " pulse, " + margins;
+	const std::string widths = "left cue width " + std::to_string(left.width) + " px, right cue width " + std::to_string(right.width) + " px";
+	if (!(peripheralOpacity(pulse) > 0)) return "no visible pulse, " + widths;
+	if ((side < 0 ? left.width : right.width) <= 0) return "pulse suppressed by current layout, " + widths;
+	return std::string("eligible ") + (side < 0 ? "left" : "right") + " pulse, " + widths;
 }
 
 void OsuHUD::drawPeripheralTimingCue(Graphics *g, OsuBeatmapStandard *beatmap)
@@ -2374,7 +2372,7 @@ void OsuHUD::drawPeripheralTimingCue(Graphics *g, OsuBeatmapStandard *beatmap)
 	const double alpha = peripheralOpacity(pulse);
 	if (!(alpha > 0)) return;
 	const int side = OsuTimingCuePresentation::side(pulse.direction, osu_timing_visual_invert.getBool());
-	const auto rect = peripheralRect(m_osu, beatmap, side);
+	const auto rect = peripheralRect(m_osu, beatmap, side, *m_osu_playfield_stretch_x_ref);
 	if (rect.width <= 0 || rect.height <= 0) return;
 	const int red = (int)peripheralSetting(osu_timing_visual_r, 115, 0, 255);
 	const int green = (int)peripheralSetting(osu_timing_visual_g, 213, 0, 255);
