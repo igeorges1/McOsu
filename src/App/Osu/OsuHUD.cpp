@@ -34,6 +34,7 @@
 #include "OsuGameRules.h"
 #include "OsuGameRulesMania.h"
 #include "OsuTimingAudioHUD.h"
+#include "OsuTimingCuePresentation.h"
 
 #include "OsuScore.h"
 #include "OsuSongBrowser2.h"
@@ -100,6 +101,22 @@ ConVar osu_hud_hiterrorbar_entry_miss_height_multiplier("osu_hud_hiterrorbar_ent
 ConVar osu_hud_hiterrorbar_entry_misaim_height_multiplier("osu_hud_hiterrorbar_entry_misaim_height_multiplier", 4.0f, FCVAR_NONE);
 ConVar osu_hud_hiterrorbar_scale("osu_hud_hiterrorbar_scale", 1.0f, FCVAR_NONE);
 ConVar osu_hud_hiterrorbar_showmisswindow("osu_hud_hiterrorbar_showmisswindow", false, FCVAR_NONE);
+extern ConVar osu_timing_visual_enabled;
+ConVar osu_timing_visual_invert("osu_timing_visual_invert", false, FCVAR_NONE);
+ConVar osu_timing_visual_variable("osu_timing_visual_variable", true, FCVAR_NONE);
+ConVar osu_timing_visual_saturation_ms("osu_timing_visual_saturation_ms", 24.0f, FCVAR_NONE);
+ConVar osu_timing_visual_min_strength("osu_timing_visual_min_strength", 0.20f, FCVAR_NONE);
+ConVar osu_timing_visual_opacity("osu_timing_visual_opacity", 0.70f, FCVAR_NONE);
+ConVar osu_timing_visual_r("osu_timing_visual_r", 115, FCVAR_NONE);
+ConVar osu_timing_visual_g("osu_timing_visual_g", 213, FCVAR_NONE);
+ConVar osu_timing_visual_b("osu_timing_visual_b", 255, FCVAR_NONE);
+ConVar osu_timing_visual_width("osu_timing_visual_width", 0.035f, FCVAR_NONE);
+ConVar osu_timing_visual_height("osu_timing_visual_height", 0.45f, FCVAR_NONE);
+ConVar osu_timing_visual_inset("osu_timing_visual_inset", 0.005f, FCVAR_NONE);
+ConVar osu_timing_visual_center("osu_timing_visual_center", 0.50f, FCVAR_NONE);
+ConVar osu_timing_visual_outside_playfield("osu_timing_visual_outside_playfield", true, FCVAR_NONE);
+ConVar osu_timing_visual_hold_seconds("osu_timing_visual_hold_seconds", 0.0f, FCVAR_NONE);
+ConVar osu_timing_visual_fade_seconds("osu_timing_visual_fade_seconds", 0.22f, FCVAR_NONE);
 ConVar osu_hud_hiterrorbar_timing_audio("osu_hud_hiterrorbar_timing_audio", false, FCVAR_NONE);
 ConVar osu_hud_hiterrorbar_timing_audio_caption("osu_hud_hiterrorbar_timing_audio_caption", true, FCVAR_NONE);
 ConVar osu_hud_hiterrorbar_timing_audio_markers_only("osu_hud_hiterrorbar_timing_audio_markers_only", false, FCVAR_NONE);
@@ -2289,6 +2306,86 @@ void OsuHUD::drawContinue(Graphics *g, Vector2 cursor, float hitcircleDiameter)
 	g->popTransform();
 }
 
+namespace
+{
+	double peripheralSetting(const ConVar &var, double fallback, double minimum, double maximum)
+	{
+		return OsuTimingAudioHUD::setting(var.getFloat(), fallback, minimum, maximum);
+	}
+
+	OsuTimingCuePresentation::Rect peripheralRect(const Osu *osu, OsuBeatmapStandard *beatmap, int side)
+	{
+		const int width = osu->getScreenWidth(), height = osu->getScreenHeight();
+		double edge = side < 0 ? width : 0;
+		if (osu_timing_visual_outside_playfield.getBool())
+		{
+			const auto field = beatmap->getPlayfieldSize();
+			const auto center = beatmap->getPlayfieldCenter();
+			static const auto *rotation = convar->getConVarByName("osu_playfield_rotation");
+			const double angle = (beatmap->getPlayfieldRotation() + rotation->getFloat()) * (std::acos(-1.0) / 180);
+			const double half = (std::abs(std::cos(angle)) * field.x + std::abs(std::sin(angle)) * field.y
+				+ beatmap->getHitcircleDiameter()) / 2;
+			edge = center.x + side * half;
+		}
+		return OsuTimingCuePresentation::margin(side, width, height, edge, peripheralSetting(osu_timing_visual_width, .035, .005, .15),
+			peripheralSetting(osu_timing_visual_height, .45, .05, 1), peripheralSetting(osu_timing_visual_inset, .005, 0, .15),
+			peripheralSetting(osu_timing_visual_center, .50, 0, 1));
+	}
+
+	double peripheralOpacity(const OsuTimingCuePresentation::Pulse &pulse)
+	{
+		return pulse.opacity(engine->getTimeReal(), peripheralSetting(osu_timing_visual_hold_seconds, 0, 0, .5),
+			peripheralSetting(osu_timing_visual_fade_seconds, .22, .05, 1), peripheralSetting(osu_timing_visual_opacity, .70, 0, 1),
+			osu_timing_visual_variable.getBool(), peripheralSetting(osu_timing_visual_saturation_ms, 24, 1, 200),
+			peripheralSetting(osu_timing_visual_min_strength, .20, 0, 1));
+	}
+
+	const char *peripheralBlocker(Osu *osu, OsuBeatmapStandard *beatmap)
+	{
+		if (!osu_timing_visual_enabled.getBool()) return "disabled";
+		if (beatmap == nullptr || osu->getInstanceID() != 0 || osu->isInVRMode() || osu->isInMultiplayer()
+			|| osu->getModAuto() || osu->getModRelax() || osu->getModAutopilot()
+			|| osu->isFPoSuEnabled()) return "unavailable in this scene";
+		if (!engine->hasFocus() || engine->isMinimized()) return "window inactive";
+		if (beatmap->isPaused() || beatmap->isWaiting() || beatmap->isContinueScheduled()
+			|| beatmap->getMusic() == nullptr || beatmap->isLoading()) return "gameplay suspended";
+		return nullptr;
+	}
+}
+
+std::string OsuHUD::getPeripheralTimingStatus(OsuBeatmapStandard *beatmap) const
+{
+	if (const auto *reason = peripheralBlocker(m_osu, beatmap)) return reason;
+	const auto left = peripheralRect(m_osu, beatmap, -1);
+	const auto right = peripheralRect(m_osu, beatmap, 1);
+	const auto pulse = beatmap->getPeripheralTimingPulse();
+	const auto side = OsuTimingCuePresentation::side(pulse.direction, osu_timing_visual_invert.getBool());
+	const std::string margins = "left margin " + std::to_string(left.width) + " px, right margin " + std::to_string(right.width) + " px";
+	if (!(peripheralOpacity(pulse) > 0)) return "no visible pulse, " + margins;
+	if ((side < 0 ? left.width : right.width) <= 0) return "pulse suppressed by current layout, " + margins;
+	return std::string("eligible ") + (side < 0 ? "left" : "right") + " pulse, " + margins;
+}
+
+void OsuHUD::drawPeripheralTimingCue(Graphics *g, OsuBeatmapStandard *beatmap)
+{
+	if (peripheralBlocker(m_osu, beatmap)) return;
+	const auto pulse = beatmap->getPeripheralTimingPulse();
+	if (!pulse.direction) return;
+	const double alpha = peripheralOpacity(pulse);
+	if (!(alpha > 0)) return;
+	const int side = OsuTimingCuePresentation::side(pulse.direction, osu_timing_visual_invert.getBool());
+	const auto rect = peripheralRect(m_osu, beatmap, side);
+	if (rect.width <= 0 || rect.height <= 0) return;
+	const int red = (int)peripheralSetting(osu_timing_visual_r, 115, 0, 255);
+	const int green = (int)peripheralSetting(osu_timing_visual_g, 213, 0, 255);
+	const int blue = (int)peripheralSetting(osu_timing_visual_b, 255, 0, 255);
+	const Color strong = COLOR((int)std::round(255 * alpha), red, green, blue);
+	const Color clear = COLOR(0, red, green, blue);
+	const Color left = side < 0 ? strong : clear, right = side < 0 ? clear : strong;
+	g->setColor(0xffffffff);
+	g->fillGradient(rect.x, rect.y, rect.width, rect.height, left, right, left, right);
+}
+
 void OsuHUD::drawHitErrorBar(Graphics *g, OsuBeatmapStandard *beatmapStd)
 {
 	if (osu_draw_hud.getBool() || !osu_hud_shift_tab_toggles_everything.getBool())
@@ -2323,6 +2420,7 @@ static UString timingAudioLabel(const OsuTimingAudioView &view, float windowMapM
 	else if (view.band.idleActive && view.band.allowance > 0) label.append(" | Idle allowance");
 	else if (!std::isfinite(evaluation.spreadMapMS.lower)) label.append(" | SD unavailable");
 	if (evaluation.output == Evaluation::MUTED) label.append(" | Muted");
+	if (evaluation.output == Evaluation::AUDIO_DISABLED) label.append(" | Audio off");
 	if (std::abs(evaluation.referenceMapMS) > windowMapMS) label.append(" | Ref off bar");
 	return label;
 }

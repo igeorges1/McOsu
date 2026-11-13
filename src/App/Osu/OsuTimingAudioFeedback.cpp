@@ -11,7 +11,7 @@
 #include "OsuHitObject.h"
 #include <cstdlib>
 
-ConVar osu_timing_audio("osu_timing_audio", false, FCVAR_NONE, "Opt-in timing audio experiment for manual circles and slider heads.");
+ConVar osu_timing_audio("osu_timing_audio", false, FCVAR_NONE, "Enable audio timing cues for manual circles and slider heads. The peripheral visual cue can keep the shared learner enabled on its own.");
 ConVar osu_timing_audio_recent("osu_timing_audio_recent", true, FCVAR_NONE, "Recent timing reference; false selects beatmap timing. Switching preserves the baseline.");
 ConVar osu_timing_audio_fixed_hits("osu_timing_audio_fixed_hits", false, FCVAR_NONE, "Use hit-count EMA instead of active-play-time EMA.");
 ConVar osu_timing_audio_half_life_seconds("osu_timing_audio_half_life_seconds", 5.0f, FCVAR_NONE, "Active-play half-life in seconds after startup. Used in time adaptation.");
@@ -36,10 +36,25 @@ ConVar osu_timing_audio_idle_grace_seconds("osu_timing_audio_idle_grace_seconds"
 ConVar osu_timing_audio_idle_ramp_seconds("osu_timing_audio_idle_ramp_seconds", 3.0f, FCVAR_NONE, "Counted-play seconds to ramp from zero allowance to the cap (0-60). Zero widens to cap after grace.");
 ConVar osu_timing_audio_idle_recovery_hits("osu_timing_audio_idle_recovery_hits", 4, FCVAR_NONE, "Accepted hits to remove full idle allowance (1-128). A hit uses the width before its recovery step.");
 ConVar osu_timing_audio_volume("osu_timing_audio_volume", 0.2f, FCVAR_NONE, "Independent cue gain, multiplied by master volume. Effects/hitsound volume does not mute it. Zero mutes while learning.");
-ConVar osu_timing_audio_muted("osu_timing_audio_muted", false, FCVAR_NONE, "Mute training cues without changing gain or stopping learning. Feature off still resets learning.");
+ConVar osu_timing_audio_muted("osu_timing_audio_muted", false, FCVAR_NONE, "Mute audio cues without changing gain or stopping learning. Peripheral cues remain active if enabled.");
 ConVar osu_timing_audio_early_sound("osu_timing_audio_early_sound", "timing-early.wav", FCVAR_NONE, "Early cue filename within sounds/. Changing sounds preserves learning; retry reloads the files.");
 ConVar osu_timing_audio_late_sound("osu_timing_audio_late_sound", "timing-late.wav", FCVAR_NONE, "Late cue filename within sounds/. Supports custom WAVs.");
 ConVar osu_timing_audio_retain_failed_cue("osu_timing_audio_retain_failed_cue", true, FCVAR_NONE, "Keep using the last good cue for a direction after a failed replacement. Off leaves that direction silent.");
+ConVar osu_timing_audio_split_ears("osu_timing_audio_split_ears", false, FCVAR_NONE, "Hard-pan early left and late right. Stereo files use channel balance; centered is the default.");
+ConVar osu_timing_audio_invert_ears("osu_timing_audio_invert_ears", false, FCVAR_NONE, "Swap left and right audio directions when split-ear audio is enabled.");
+ConVar osu_timing_visual_enabled("osu_timing_visual_enabled", false, FCVAR_NONE);
+
+static bool timingCueTrainingEnabled()
+{
+	return osu_timing_audio.getBool() || osu_timing_visual_enabled.getBool();
+}
+
+static bool peripheralScene(Osu *osu)
+{
+	return !osu->isInMultiplayer() && !osu->isFPoSuEnabled() && !osu->isInVRMode()
+		&& osu->getInstanceID() == 0 && !osu->getModAuto() && !osu->getModRelax() && !osu->getModAutopilot()
+		&& engine->hasFocus() && !engine->isMinimized();
+}
 ConVar osu_timing_audio_trace("osu_timing_audio_trace", false, FCVAR_NONE, "Log preceding baseline, error, output and actual playback success; diagnostic overhead only when enabled.");
 ConVar osu_timing_capture_enabled("osu_timing_capture_enabled", false, FCVAR_NONE);
 ConVar osu_timing_capture_screenshot("osu_timing_capture_screenshot", true, FCVAR_NONE);
@@ -135,6 +150,8 @@ OsuTimingAudioFeedback::~OsuTimingAudioFeedback()
 
 void OsuTimingAudioFeedback::reset()
 {
+	clearPeripheralPulse();
+	m_lastRequestedPan = std::numeric_limits<double>::quiet_NaN();
 	m_state.reset();
 	m_recentWindow.reset();
 	m_playClock = OsuTimingAudioPlayClock();
@@ -207,6 +224,7 @@ void OsuTimingAudioFeedback::pause()
 
 void OsuTimingAudioFeedback::suspendPlayClock()
 {
+	clearPeripheralPulse();
 	syncCapture();
 	const double now = engine->getTime();
 	m_playClock.advance(now, false);
@@ -216,7 +234,7 @@ void OsuTimingAudioFeedback::suspendPlayClock()
 
 void OsuTimingAudioFeedback::syncCapture()
 {
-	m_capture.sync(osu_timing_audio.getBool() && osu_timing_capture_enabled.getBool(), m_captureFromReset);
+	m_capture.sync(timingCueTrainingEnabled() && osu_timing_capture_enabled.getBool(), m_captureFromReset);
 }
 
 void OsuTimingAudioFeedback::captureSkip()
@@ -253,22 +271,32 @@ bool OsuTimingAudioFeedback::needsActivities(const OsuTimingAudioState::Config &
 
 OsuTimingAudioEvaluation OsuTimingAudioFeedback::getLastEvaluation() const
 {
-	if (!osu_timing_audio.getBool())
+	if (!timingCueTrainingEnabled())
 	{
 		OsuTimingAudioEvaluation evaluation;
 		evaluation.phase = OsuTimingAudioEvaluation::OFF;
 		return evaluation;
 	}
 	auto evaluation = m_state.getLastEvaluation();
-	if (evaluation.phase != OsuTimingAudioEvaluation::WAITING) evaluation.output = m_lastOutput;
+	if (evaluation.phase != OsuTimingAudioEvaluation::WAITING)
+	{
+		evaluation.output = m_lastOutput;
+		evaluation.requestedPan = m_lastRequestedPan;
+	}
 	return evaluation;
+}
+
+OsuTimingCuePresentation::Pulse OsuTimingAudioFeedback::getPeripheralPulse() const
+{
+	return osu_timing_visual_enabled.getBool() && m_peripheralPulse.generation == m_state.getGeneration()
+		? m_peripheralPulse : OsuTimingCuePresentation::Pulse();
 }
 
 OsuTimingAudioView OsuTimingAudioFeedback::getCurrentView(OsuTimingAudioView::Mode mode, double recentSeconds, bool includeCueStatus) const
 {
 	OsuTimingAudioView view;
 	view.mode = mode;
-	if (!osu_timing_audio.getBool())
+	if (!timingCueTrainingEnabled())
 		view.evaluation.phase = OsuTimingAudioEvaluation::OFF;
 	else if (m_prepared)
 	{
@@ -291,10 +319,11 @@ OsuTimingAudioView OsuTimingAudioFeedback::getCurrentView(OsuTimingAudioView::Mo
 			m_recentWindow.apply(view.evaluation, view.speed, view.playSeconds, recentSeconds);
 		else if (!pendingReset && (mode == OsuTimingAudioView::NEXT_AT_AVERAGE || mode == OsuTimingAudioView::NEXT_AT_REFERENCE))
 			m_state.projectNextHit(view.evaluation, view.speed, mode == OsuTimingAudioView::NEXT_AT_REFERENCE);
-		if (timingAudioVolume() <= 0.0f || engine->getSound()->getVolume() <= 0.0f)
+		if (!osu_timing_audio.getBool()) view.evaluation.output = OsuTimingAudioEvaluation::AUDIO_DISABLED;
+		else if (timingAudioVolume() <= 0.0f || engine->getSound()->getVolume() <= 0.0f)
 			view.evaluation.output = OsuTimingAudioEvaluation::MUTED;
 		view.recentTruncated = m_recentWindow.truncated(view.playSeconds, recentSeconds);
-		if (includeCueStatus)
+		if (includeCueStatus && osu_timing_audio.getBool())
 		{
 			const bool retain = osu_timing_audio_retain_failed_cue.getBool();
 			m_early.selected(osu_timing_audio_early_sound.getString(), retain, &view.early);
@@ -307,7 +336,7 @@ OsuTimingAudioView OsuTimingAudioFeedback::getCurrentView(OsuTimingAudioView::Mo
 void OsuTimingAudioFeedback::update()
 {
 	syncCapture();
-	if (!osu_timing_audio.getBool())
+	if (!timingCueTrainingEnabled())
 	{
 		if (m_enabled) reset();
 		m_enabled = false;
@@ -328,7 +357,12 @@ void OsuTimingAudioFeedback::update()
 		m_capture.add(OsuTimingAudioCapture::CLOCK, {now, (long double)counted, (long double)stage});
 	}
 	m_captureFromReset = false;
-	if (!playing) return;
+	if (!playing || waiting || !osu_timing_visual_enabled.getBool()) clearPeripheralPulse();
+	else if (m_peripheralPulse.direction && !peripheralScene(m_beatmap->getOsu())) clearPeripheralPulse();
+	if (!playing)
+	{
+		return;
+	}
 	m_enabled = true;
 
 	const auto config = timingAudioConfig();
@@ -357,8 +391,11 @@ void OsuTimingAudioFeedback::update()
 	}
 
 	// Separately owned samples; explicit file changes never reset the estimator.
-	loadCue(m_early, osu_timing_audio_early_sound.getString());
-	loadCue(m_late, osu_timing_audio_late_sound.getString());
+	if (osu_timing_audio.getBool())
+	{
+		loadCue(m_early, osu_timing_audio_early_sound.getString());
+		loadCue(m_late, osu_timing_audio_late_sound.getString());
+	}
 	const double mapMS = m_beatmap->getCurMusicPosWithOffsets();
 	const double speed = m_beatmap->getSpeedMultiplier();
 	m_state.advance(mapMS, speed);
@@ -367,14 +404,21 @@ void OsuTimingAudioFeedback::update()
 
 void OsuTimingAudioFeedback::onManualHit(long opportunityMS, long delta)
 {
-	if (!osu_timing_audio.getBool()) return;
+	if (!timingCueTrainingEnabled()) return;
 	Osu *osu = m_beatmap->getOsu();
-	if (osu->getModAuto() || osu->getModRelax() || osu->getModAutopilot() || osu->isInVRMode() || osu->getInstanceID() > 0) return;
+	if (osu->getModAuto() || osu->getModRelax() || osu->getModAutopilot() || osu->isInVRMode() || osu->getInstanceID() > 0)
+	{
+		clearPeripheralPulse();
+		return;
+	}
+	const bool audio = osu_timing_audio.getBool();
+	if (!audio && (osu->isInMultiplayer() || osu->isFPoSuEnabled())) return;
 	update();
 	if (!m_enabled || !m_prepared || m_beatmap->isPaused() || m_beatmap->isContinueScheduled()) return;
 	const auto inputs = timingAudioInputs(m_beatmap, delta);
 	const double playSeconds = m_playClock.seconds();
 	const auto result = m_state.sampleMap(delta, inputs.window300, inputs.recent, opportunityMS, inputs.targetMapMS(), playSeconds);
+	m_lastRequestedPan = std::numeric_limits<double>::quiet_NaN();
 	if (m_capture.enabled())
 		m_capture.hit(delta, inputs.window300, inputs.recent, opportunityMS, inputs.targetMapMS(), m_state, result);
 	if (!result.accepted)
@@ -383,7 +427,15 @@ void OsuTimingAudioFeedback::onManualHit(long opportunityMS, long delta)
 		return;
 	}
 	m_recentWindow.recordAcceptedHit(playSeconds, static_cast<double>(delta) / inputs.window300.speed);
-	const float volume = timingAudioVolume();
+	if (result.cue != OsuTimingAudioState::SILENT && osu_timing_visual_enabled.getBool() && !m_beatmap->isWaiting()
+		&& peripheralScene(osu))
+	{
+		m_peripheralPulse.direction = result.cue;
+		m_peripheralPulse.excessMS = result.excessMS;
+		m_peripheralPulse.started = engine->getTimeReal();
+		m_peripheralPulse.generation = m_state.getGeneration();
+	}
+	const float volume = audio ? timingAudioVolume() : 0.0f;
 	bool played = false;
 	Sound *sound = NULL;
 	if (result.cue != OsuTimingAudioState::SILENT && volume > 0.0f)
@@ -394,11 +446,14 @@ void OsuTimingAudioFeedback::onManualHit(long opportunityMS, long delta)
 		if (sound != NULL)
 		{
 			sound->setVolume(volume);
-			played = engine->getSound()->play(sound);
+			const float pan = OsuTimingCuePresentation::pan(result.cue, osu_timing_audio_split_ears.getBool(), osu_timing_audio_invert_ears.getBool());
+			m_lastRequestedPan = pan;
+			played = engine->getSound()->play(sound, pan);
 		}
 	}
 	// Report the last hit's output status without changing the playback request.
-	if (volume <= 0.0f || engine->getSound()->getVolume() <= 0.0f)
+	if (!audio) m_lastOutput = OsuTimingAudioEvaluation::AUDIO_DISABLED;
+	else if (volume <= 0.0f || engine->getSound()->getVolume() <= 0.0f)
 		m_lastOutput = OsuTimingAudioEvaluation::MUTED;
 	else if (result.cue != OsuTimingAudioState::SILENT && !played)
 		m_lastOutput = sound == NULL ? OsuTimingAudioEvaluation::CUE_UNAVAILABLE : OsuTimingAudioEvaluation::PLAY_FAILED;

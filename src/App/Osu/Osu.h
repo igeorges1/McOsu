@@ -195,6 +195,7 @@ public:
 	static bool isInVRMode();
 	inline bool isInVRDraw() const {return m_bIsInVRDraw;}
 	bool isInMultiplayer();
+	bool isFPoSuEnabled() const;
 	inline bool isSkinLoading() const {return m_bSkinLoadScheduled;}
 
 	inline bool isSkipScheduled() const {return m_bSkipScheduled;}

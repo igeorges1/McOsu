@@ -8,6 +8,8 @@
 #ifndef OSUHUD_H
 #define OSUHUD_H
 
+#include <string>
+
 #include "OsuScreen.h"
 #include "OsuTimingAudioHUD.h"
 
@@ -50,6 +52,8 @@ public:
 	void drawCursorRipples(Graphics *g);
 	void drawFps(Graphics *g) {drawFps(g, m_tempFont, m_fCurFps);}
 	void drawHitErrorBar(Graphics *g, OsuBeatmapStandard *beatmapStd);
+	void drawPeripheralTimingCue(Graphics *g, OsuBeatmapStandard *beatmap);
+	std::string getPeripheralTimingStatus(OsuBeatmapStandard *beatmap) const;
 	void drawPlayfieldBorder(Graphics *g, Vector2 playfieldCenter, Vector2 playfieldSize, float hitcircleDiameter);
 	void drawPlayfieldBorder(Graphics *g, Vector2 playfieldCenter, Vector2 playfieldSize, float hitcircleDiameter, float borderSize);
 	void drawLoadingSmall(Graphics *g);

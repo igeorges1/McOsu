@@ -30,7 +30,7 @@ public:
 	static const std::vector<Spec> &specs()
 	{
 		static const std::vector<Spec> list = {
-			{"osu_timing_audio", "Enable timing audio (off resets)", BOOLEAN, 0, 1, true},
+			{"osu_timing_audio", "Enable timing audio cues", BOOLEAN, 0, 1, true},
 			{"osu_timing_audio_muted", "Mute cues (keep learning)", BOOLEAN, 0, 1, false},
 			{"osu_timing_audio_recent", "Recent reference (off = Beatmap)", BOOLEAN, 0, 1, false},
 			{"osu_timing_audio_target", "Beatmap target (-3..3)", NUMBER, -3, 3, false},
@@ -59,6 +59,8 @@ public:
 			{"osu_timing_audio_early_sound", "Early cue filename inside sounds/", FILENAME, 0, 0, false},
 			{"osu_timing_audio_late_sound", "Late cue filename inside sounds/", FILENAME, 0, 0, false},
 			{"osu_timing_audio_retain_failed_cue", "Keep last good cue if replacement fails", BOOLEAN, 0, 1, false, "1"},
+			{"osu_timing_audio_split_ears", "Split timing audio left and right", BOOLEAN, 0, 1, false, "0"},
+			{"osu_timing_audio_invert_ears", "Invert timing audio ears", BOOLEAN, 0, 1, false, "0"},
 			{"osu_timing_audio_trace", "Diagnostic logging (adds overhead)", BOOLEAN, 0, 1, false}
 		};
 		return list;

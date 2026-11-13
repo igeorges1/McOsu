@@ -10,8 +10,8 @@ All rows below save to ordinary config and named audio profiles.
 
 | Control | Key | Default | Accepted range | Applying | Effect |
 | --- | --- | --- | --- | --- | --- |
-| Enable timing audio (off resets) | `osu_timing_audio` | `false` | On / Off | Off resets timing | Opt-in timing audio experiment for manual circles and slider heads. |
-| Mute cues (keep learning) | `osu_timing_audio_muted` | `false` | On / Off | Keeps learner | Mute training cues without changing gain or stopping learning. Feature off still resets learning. |
+| Enable timing audio cues | `osu_timing_audio` | `false` | On / Off | Both channels off resets timing | Enable audio timing cues for manual circles and slider heads. The peripheral visual cue can keep the shared learner enabled on its own. |
+| Mute cues (keep learning) | `osu_timing_audio_muted` | `false` | On / Off | Keeps learner | Mute audio cues without changing gain or stopping learning. Peripheral cues remain active if enabled. |
 | Recent reference (off = Beatmap) | `osu_timing_audio_recent` | `true` | On / Off | Keeps learner | Recent timing reference; false selects beatmap timing. Switching preserves the baseline. |
 | Beatmap target (-3..3) | `osu_timing_audio_target` | `0` | `-3`–`3` | Keeps learner | Beatmap reference: 0=center, +/-1=300 edge, +/-2=100 edge, +/-3=50 edge. Recent ignores this setting; scores are unchanged. |
 | Silent width | `osu_timing_audio_deadzone_mode` | `0` | `0`–`2` | Keeps learner | 0=fixed milliseconds, 1=fraction of current 300 half-window, 2=preceding timing spread. Switching preserves learning. |
@@ -39,6 +39,8 @@ All rows below save to ordinary config and named audio profiles.
 | Early cue filename inside sounds/ | `osu_timing_audio_early_sound` | `timing-early.wav` | Relative file under `sounds/` | Keeps learner | Early cue filename within sounds/. Changing sounds preserves learning; retry reloads the files. |
 | Late cue filename inside sounds/ | `osu_timing_audio_late_sound` | `timing-late.wav` | Relative file under `sounds/` | Keeps learner | Late cue filename within sounds/. Supports custom WAVs. |
 | Keep last good cue if replacement fails | `osu_timing_audio_retain_failed_cue` | `true` | On / Off | Keeps learner | Keep using the last good cue for a direction after a failed replacement. Off leaves that direction silent. |
+| Split timing audio left and right | `osu_timing_audio_split_ears` | `false` | On / Off | Keeps learner | Hard-pan early left and late right. Stereo files use channel balance; centered is the default. |
+| Invert timing audio ears | `osu_timing_audio_invert_ears` | `false` | On / Off | Keeps learner | Swap left and right audio directions when split-ear audio is enabled. |
 | Diagnostic logging (adds overhead) | `osu_timing_audio_trace` | `false` | On / Off | Keeps learner | Log preceding baseline, error, output and actual playback success; diagnostic overhead only when enabled. |
 
 ## Live Timing Debug Capture
@@ -53,6 +55,36 @@ Applies immediately and saves to ordinary Options config.
 | Completed intervals after mark | `osu_timing_capture_frame_tail` | `30` | `0`–`120` | Collect at most this many post-mark app updates, for up to two seconds. |
 | Save screenshot when marking a problem | `osu_timing_capture_screenshot` | `true` | On / Off | Reads a matching draw on the render thread. Image encoding and export run in the background on Windows. |
 | Mark problem key | `osu_timing_capture_mark_key` | `0` | Key binding or 0 (unbound) | Choose an unused key or use the Mark problem button. Zero is unbound. |
+
+## Peripheral Timing Cue
+
+Applies immediately and saves to ordinary Options config.
+
+| Control | Key | Default | Options range | Effect |
+| --- | --- | --- | --- | --- |
+| Show peripheral timing cue | `osu_timing_visual_enabled` | `false` | On / Off | Trains with audio off or muted. Left means hit later; right means hit earlier. |
+| Invert peripheral cue sides | `osu_timing_visual_invert` | `false` | On / Off | Swap the visual directions independently of audio. |
+| Vary peripheral cue strength | `osu_timing_visual_variable` | `true` | On / Off | Brightness grows with distance outside the used silent band. Off uses fixed strength. |
+| Full strength excess (ms) | `osu_timing_visual_saturation_ms` | `24` | `1`–`200` | Real-play milliseconds beyond the used band for full variable brightness. |
+| Minimum variable strength | `osu_timing_visual_min_strength` | `0.2` | `0`–`1` | Fraction of peak opacity just outside the silent band. Applies in variable mode. |
+| Peripheral hold (seconds) | `osu_timing_visual_hold_seconds` | `0` | `0`–`0.5` | Real seconds at the initial brightness before fading. |
+| Peripheral fade (seconds) | `osu_timing_visual_fade_seconds` | `0.22` | `0.05`–`1` | Real seconds for the cue to fade. A newer directional hit replaces it. |
+
+## Peripheral Cue Appearance and Layout
+
+Applies immediately and saves to ordinary Options config.
+
+| Control | Key | Default | Options range | Effect |
+| --- | --- | --- | --- | --- |
+| Peripheral peak opacity | `osu_timing_visual_opacity` | `0.7` | `0`–`1` | Maximum cue opacity. Zero hides the visual cue. |
+| Peripheral cue width fraction | `osu_timing_visual_width` | `0.035` | `0.005`–`0.15` | Fraction of screen width, capped by the available playfield margin. |
+| Peripheral cue height fraction | `osu_timing_visual_height` | `0.45` | `0.05`–`1` | Fraction of screen height. |
+| Peripheral edge inset fraction | `osu_timing_visual_inset` | `0.005` | `0`–`0.15` | Fraction of screen width inward from the edge. A large inset may leave no room. |
+| Peripheral vertical center fraction | `osu_timing_visual_center` | `0.5` | `0`–`1` | Vertical position from top to bottom; adjust around skin and input overlays. |
+| Keep cues outside the playfield | `osu_timing_visual_outside_playfield` | `true` | On / Off | Off permits a viewport-edge cue to overlap the playfield when margins are narrow. |
+| Peripheral cue red | `osu_timing_visual_r` | `115` | `0`–`255` | Red channel for the shared peripheral cue color. |
+| Peripheral cue green | `osu_timing_visual_g` | `213` | `0`–`255` | Green channel for the shared peripheral cue color. |
+| Peripheral cue blue | `osu_timing_visual_b` | `255` | `0`–`255` | Blue channel for the shared peripheral cue color. |
 
 ## Timing Audio HUD
 

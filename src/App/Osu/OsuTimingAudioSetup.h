@@ -48,7 +48,7 @@ namespace OsuTimingAudioSetup
 		summary.reference = std::string("Applied: ") + reference + " / " + width;
 		switch (evaluation.phase)
 		{
-		case Evaluation::OFF: summary.band = "Silent band: audio off"; break;
+		case Evaluation::OFF: summary.band = "Silent band: both cue channels off"; break;
 		case Evaluation::WAITING: summary.band = "Silent band: waiting for gameplay"; break;
 		case Evaluation::INVALID: summary.band = "Silent band: invalid reference or window"; break;
 		case Evaluation::WARMUP: summary.band = "Silent band: warming up"; break;
@@ -92,6 +92,7 @@ namespace OsuTimingAudioSetup
 		case E::CUE_UNAVAILABLE: return "cue unavailable";
 		case E::PLAY_FAILED: return "playback request failed";
 		case E::PLAYED: return "playback request succeeded";
+		case E::AUDIO_DISABLED: return "audio disabled";
 		case E::NO_ISSUE: return "no cue requested";
 		}
 		return "unavailable";
@@ -139,13 +140,16 @@ namespace OsuTimingAudioSetup
 			<< " s; since last accepted hit in this generation " << number(view.secondsSinceHit) << " s\n"
 			<< "Learning generation " << view.generation
 			<< (view.pendingReset ? "; settings will reset learning on resume" : "") << "\n"
-			<< "Cue mute status " << (evaluation.output == OsuTimingAudioEvaluation::MUTED ? "muted"
+			<< "Cue mute status " << (evaluation.output == OsuTimingAudioEvaluation::AUDIO_DISABLED ? "audio disabled"
+				: evaluation.output == OsuTimingAudioEvaluation::MUTED ? "muted"
 				: (view.speed > 0 ? "unmuted" : "unavailable")) << "\n"
 			<< "Early active file " << (view.early.activeFile.empty() ? "none" : view.early.activeFile) << " (" << view.early.reason << ")\n"
 			<< "Late active file " << (view.late.activeFile.empty() ? "none" : view.late.activeFile) << " (" << view.late.reason << ")\n"
 			<< "Last hit evaluation " << phase(view.lastHit.phase) << "; interval " << interval(view.lastHit)
 			<< "; cue " << (view.lastHit.classifiedCue < 0 ? "early" : view.lastHit.classifiedCue > 0 ? "late" : "silent")
 			<< "; " << output(view.lastHit.output) << "\n"
+			<< "Last hit excess " << number(view.lastHit.excessMS) << " real-play ms"
+			<< " | requested audio pan " << number(view.lastHit.requestedPan) << "\n"
 			<< "HUD view " << OsuTimingAudioView::name(hudMode) << " (selected)"
 			<< (view.recentTruncated ? "; Recent history is truncated" : "") << "\n\n";
 		for (const auto &entry : applied)

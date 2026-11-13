@@ -1627,6 +1627,7 @@ bool OsuBeatmap::isPreviewMusicPlaying()
 
 void OsuBeatmap::stop(bool quit)
 {
+	clearPeripheralTimingPulse();
 	if (m_selectedDifficulty2 == NULL) return;
 
 	if (getSkin()->getFailsound()->isPlaying())
@@ -2375,6 +2376,16 @@ unsigned long long OsuBeatmap::getTimingCaptureEpoch() const
 bool OsuBeatmap::snapshotTimingCapture(OsuTimingAudioCapture &snapshot, double recentSeconds)
 {
 	return m_timingAudioFeedback->snapshotCapture(snapshot, recentSeconds);
+}
+
+OsuTimingCuePresentation::Pulse OsuBeatmap::getPeripheralTimingPulse() const
+{
+	return m_timingAudioFeedback->getPeripheralPulse();
+}
+
+void OsuBeatmap::clearPeripheralTimingPulse()
+{
+	m_timingAudioFeedback->clearPeripheralPulse();
 }
 
 void OsuBeatmap::playTimingFeedback(long opportunityMS, long delta, OsuScore::HIT result)

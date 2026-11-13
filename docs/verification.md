@@ -18,7 +18,7 @@ python tools/verify.py --toolchain C:/dependencies/mingw32
 ```
 
 Replace the dependency path with your extracted toolchain root. This is the one
-supported entrypoint. It runs the `timing` profile by default: **all eight C++
+supported entrypoint. It runs the `timing` profile by default: **all nine C++
 suites, the settings inventory, and the named regression**. The script locates
 source relative to itself; you can invoke its absolute path from another cwd.
 Compiler `bin` is prepended to the child's PATH, including for test DLL loading.
@@ -32,7 +32,7 @@ header and generated test hashes are recorded. The run cwd must be at most 220
 characters; deeper checkouts fail preflight with a request for a shallower path.
 The receipt records effective arguments with the absolute cwd/input identities.
 
-Preflight requires exactly the eight registered nonempty suite files, inventory,
+Preflight requires exactly the nine registered nonempty suite files, inventory,
 control reference, production header dependencies and complete historical fixture
 manifest. New `OsuTimingAudio*Test.cpp` files require explicit registration in
 `tools/verify.py`; they cannot silently escape the profile. Missing inputs and
@@ -45,7 +45,7 @@ python tools/verify.py --toolchain C:/dependencies/mingw32 --case preroll-histor
 ```
 
 This selects **only three case compile/run pairs**, after common input/dependency
-preflight. It does not run the eight suites or settings inventory. Both commands
+preflight. It does not run the nine suites or settings inventory. Both commands
 return zero only after every selected check completes successfully. A successful
 full profile records 26 direct child checks (3 compiler probes, 16 suite compile/
 run checks, 1 inventory, 6 case compile/run checks). A selected case records 9.
@@ -86,6 +86,7 @@ case deliberately claims only the history seam.
 | `OsuTimingAudioReferenceTest` | Reference normalization | Numeric references, input rejection and ranges |
 | `OsuTimingAudioStateTest` | Learner and activity clock | State contracts, resets, gap handling and million-sample loop |
 | `OsuTimingAudioBandTest` | Pre-hit classification/band policy | Weighted spread, startup, switches, gating and variance correction |
+| `OsuTimingAudioPresentationTest` | Direction and presentation | Shared signed decisions and excess, independent inversions, hold/fade and viewport margins |
 | `OsuTimingAudioBoundaryTest` | Map/real timing endpoints | Fractional target/rate/width endpoints and outward neighbors |
 | `OsuTimingAudioHUDTest` | Live evaluations, recent history, projections and HUD geometry | State and geometry; no native pixels |
 | `OsuTimingAudioSettingsTest` | Schema, config retention and profile parser | Validation, exact decimal/Unicode roundtrip and negative inputs |

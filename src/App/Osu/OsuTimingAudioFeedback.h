@@ -5,6 +5,7 @@
 #include "OsuTimingAudioRecentWindow.h"
 #include "OsuTimingAudioPlayClock.h"
 #include "OsuTimingAudioCapture.h"
+#include "OsuTimingCuePresentation.h"
 #include "UString.h"
 
 class OsuBeatmap;
@@ -28,6 +29,8 @@ public:
 	bool snapshotCapture(OsuTimingAudioCapture &snapshot, double recentSeconds);
 	void captureSkip();
 	unsigned long long captureEpoch() const { return m_captureEpoch; }
+	OsuTimingCuePresentation::Pulse getPeripheralPulse() const;
+	void clearPeripheralPulse() { m_peripheralPulse = {}; }
 
 private:
 	bool needsActivities(const OsuTimingAudioState::Config &config, bool excludeActivity) const;
@@ -50,6 +53,8 @@ private:
 	Cue m_early, m_late;
 	bool m_enabled, m_prepared, m_excludeActivity;
 	OsuTimingAudioEvaluation::Output m_lastOutput = OsuTimingAudioEvaluation::NO_ISSUE;
+	OsuTimingCuePresentation::Pulse m_peripheralPulse;
+	double m_lastRequestedPan = std::numeric_limits<double>::quiet_NaN();
 	double m_breakSeconds;
 };
 
