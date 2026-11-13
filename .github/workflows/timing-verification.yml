@@ -28,6 +28,8 @@ jobs:
         run: python .github/scripts/run_guarded.py --label runner-contract --timeout 120 --contains "PASS runner-contract: exit=0x00000000 timeout=False" --contains "COMPLETE failures=0 checks=4" -- python tools/verify.py --toolchain "$env:MCOSU_TOOLCHAIN" --profile runner-contract
       - name: Synthetic production-helper capture consumer
         run: python .github/scripts/run_guarded.py --label capture-consumer --timeout 240 --contains "COMPLETE capture consumer smoke failures=0 checks=4" -- python .github/scripts/capture_smoke.py --toolchain "$env:MCOSU_TOOLCHAIN"
+      - name: Python performance consumer
+        run: python .github/scripts/run_guarded.py --label performance-consumer --timeout 90 --contains "COMPLETE performance consumer smoke failures=0 checks=4" -- python .github/scripts/performance_smoke.py
       - name: Retain readable success/failure evidence
         # The preceding smoke case uses production helpers, not game/adapter/audio.
         if: always()
