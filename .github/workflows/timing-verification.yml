@@ -25,7 +25,8 @@ jobs:
       - name: Full registered helper profile
         run: python .github/scripts/run_guarded.py --label timing --timeout 180 --contains "COMPLETE failures=0 checks=" -- python tools/verify.py --toolchain "$env:MCOSU_TOOLCHAIN"
       - name: Runner failure contracts
-        run: python .github/scripts/run_guarded.py --label runner-contract --timeout 120 --contains "PASS runner-contract: exit=0x00000000 timeout=False" --contains "COMPLETE failures=0 checks=4" -- python tools/verify.py --toolchain "$env:MCOSU_TOOLCHAIN" --profile runner-contract
+        run: >-
+          python .github/scripts/run_guarded.py --label runner-contract --timeout 120 --contains "PASS runner-contract: exit=0x00000000 timeout=False" --contains "COMPLETE failures=0 checks=4" -- python tools/verify.py --toolchain "$env:MCOSU_TOOLCHAIN" --profile runner-contract
       - name: Synthetic production-helper capture consumer
         run: python .github/scripts/run_guarded.py --label capture-consumer --timeout 240 --contains "COMPLETE capture consumer smoke failures=0 checks=4" -- python .github/scripts/capture_smoke.py --toolchain "$env:MCOSU_TOOLCHAIN"
       - name: Python performance consumer
