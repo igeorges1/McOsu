@@ -4,6 +4,8 @@ Open **Options → Timing Audio Experiment**, the first section. **Applied Timin
 
 The optional [live timing debug capture](timing-capture.md) records the timing model inputs and observed results at the adapter boundary. A mark saves a bounded prefix and current applied snapshot. The optional screenshot records the following matching draw. Capture settings are ordinary Options preferences outside named audio profiles.
 
+[Performance capture](performance-capture.md) uses the same mark independently of timing audio. It records completed app update intervals and CPU-side phases, and exports them with the timing report and optional image through the bounded Windows worker.
+
 ```mermaid
 flowchart LR
     A["Manual circle or slider-head judgement"] --> B["Eligible accepted hits"]
