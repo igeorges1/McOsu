@@ -16,6 +16,11 @@ Note that Linux and macOS support is not as polished as Windows, and some functi
 
 See the [timing audio system map](docs/timing-audio.md) for the experimental cues, live HUD, and tuning controls in this source tree.
 
+Repeatable Windows builds and managed runtimes are documented in the
+[merged fork tooling guide](https://github.com/igeorges1/McOsu/blob/c977662847c422b2f435774897a18a702bc0a690/tools/runtime/README.md).
+Those independent tooling files are merged in the fork default branch; they are
+not duplicated into this dependent timing feature branch.
+
 ## Notable features which osu! doesn't have (yet) in comparison:
 - Virtual Reality support (HTC Vive + Oculus Rift)
 - Mid-play empty section skipping
