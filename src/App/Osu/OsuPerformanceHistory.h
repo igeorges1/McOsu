@@ -42,20 +42,23 @@ public:
 	{
 		if (m_ring.empty()) return nullptr;
 		const Frame *completed = nullptr;
-		if (m_active)
+		const bool valid = validStamp(now);
+		if (!valid || (m_active && now < m_current.start))
 		{
-			if (std::isfinite(now) && now >= m_current.start)
-			{
-				m_current.interval = now - m_current.start;
-				m_ring[m_next] = m_current;
-				completed = &m_ring[m_next];
-				m_next = (m_next + 1) % m_ring.size();
-				if (m_count < m_ring.size()) ++m_count;
-				else ++m_evicted;
-			}
-			else ++m_discontinuities;
+			m_count = m_next = 0;
+			m_evicted = 0;
+			++m_discontinuities;
 		}
-		m_active = std::isfinite(now);
+		else if (m_active)
+		{
+			m_current.interval = now - m_current.start;
+			m_ring[m_next] = m_current;
+			completed = &m_ring[m_next];
+			m_next = (m_next + 1) % m_ring.size();
+			if (m_count < m_ring.size()) ++m_count;
+			else ++m_evicted;
+		}
+		m_active = valid;
 		m_current = context;
 		m_current.sequence = ++m_sequence;
 		m_current.start = now;
@@ -99,7 +102,17 @@ public:
 
 	static bool finished(const Window &window)
 	{
-		return (window.boundarySequence || window.postTarget > 0) && window.postCount >= window.postTarget;
+		return window.boundarySequence && window.postCount >= window.postTarget;
+	}
+
+	static bool validStamp(double now) { return std::isfinite(now) && now >= 0; }
+
+	// A pending snapshot keeps its earlier samples but cannot cross a clock reset.
+	bool continueWindow(Window &window, double now) const
+	{
+		const bool sameSegment = window.discontinuities == m_discontinuities;
+		window.discontinuities = m_discontinuities;
+		return sameSegment && validStamp(now) && now >= window.mark;
 	}
 
 	uint64_t discontinuities() const { return m_discontinuities; }
