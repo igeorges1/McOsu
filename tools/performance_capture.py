@@ -45,7 +45,7 @@ def read_capture(data):
     require(math.isfinite(mark) and 0 <= mark <= 1e12 and evicted >= 0 and gaps >= 0, "Invalid mark or history counters")
     require(0 <= post <= target <= 120 and 0 <= count <= 4217, "Invalid frame or post-mark bound")
     require(marked_sequence >= 0 and post_end in {"target", "scene", "settings", "deadline", "clock", "shutdown"}
-            and (post_end != "target" or (post == target and (marked_sequence or target > 0))), "Inconsistent post-mark completion")
+            and (post_end != "target" or (post == target and marked_sequence)), "Inconsistent post-mark completion")
     require(lines[12] == COLUMNS and lines[-1] == "end" and len(lines) == 14 + count, "Truncated or extra frame rows")
     frames = []
     for line in lines[13:-1]:
@@ -61,7 +61,7 @@ def read_capture(data):
                 and ((draws == 0 and draw == -1) or (draws > 0 and 0 <= draw <= 1e12))
                 and 0 <= context <= 127 and unlimited in (-1, 0, 1) and vsync in (-1, 0, 1)
                 and sequence > (frames[-1]["sequence"] if frames else 0), "Invalid frame values or ordering")
-        if frames and not gaps:
+        if frames:
             previous = frames[-1]
             require(sequence == previous["sequence"] + 1 and math.isclose(start, previous["start"] + previous["interval"],
                     rel_tol=1e-12, abs_tol=1e-9), "Unexpected frame gap")

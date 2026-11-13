@@ -1895,6 +1895,7 @@ void Osu::markTimingCapture()
 	if (!performance && !ready) return fail("Mark a timing problem during ready standard gameplay.");
 
 	const double start = engine->getTimeReal();
+	if (!OsuPerformanceHistory::validStamp(start)) return fail("Capture unavailable while the clock is invalid.");
 	auto job = std::unique_ptr<OsuCaptureExport::Job>(new OsuCaptureExport::Job());
 	job->source = timingCaptureSource;
 	job->mark = start;
@@ -1986,13 +1987,13 @@ void Osu::updateCapturedPerformance(double now)
 	{
 		auto &job = *m_pendingTimingCapture;
 		const bool changed = map != m_captureMarkMap || (map != nullptr && map->getTimingCaptureEpoch() != job.epoch);
-		const bool expired = now - job.mark >= 2 || now < job.mark;
+		const bool expired = !OsuPerformanceHistory::validStamp(now) || now - job.mark >= 2 || now < job.mark;
 		if ((changed || expired) && job.screenshot == "pending")
 			job.screenshot = changed ? "scene changed before frame" : "no matching draw before deadline";
-		if (job.hasPerformance && !job.postClosed && !OsuPerformanceHistory::finished(job.performance) && (changed || interrupted || now < job.mark))
+		if (job.hasPerformance && !job.postClosed && !OsuPerformanceHistory::finished(job.performance) && (changed || interrupted))
 		{
 			job.postClosed = true;
-			job.postEnd = changed ? "scene" : interrupted ? "settings" : now < job.mark ? "clock" : "deadline";
+			job.postEnd = changed ? "scene" : "settings";
 		}
 	}
 	if (recording)
@@ -2017,13 +2018,18 @@ void Osu::updateCapturedPerformance(double now)
 		if (unlimited != nullptr) context.unlimited = unlimited->getBool();
 		if (vsync != nullptr) context.vsync = vsync->getBool();
 		const auto *completed = m_performanceHistory.begin(now, context);
-		if (m_pendingTimingCapture && m_pendingTimingCapture->hasPerformance && !m_pendingTimingCapture->postClosed)
-			m_pendingTimingCapture->performance.discontinuities = m_performanceHistory.discontinuities();
-		if (completed && m_pendingTimingCapture && m_pendingTimingCapture->hasPerformance && !m_pendingTimingCapture->postClosed
-			&& (now - m_pendingTimingCapture->mark < 2 || completed->start <= m_pendingTimingCapture->mark))
+		if (m_pendingTimingCapture && m_pendingTimingCapture->hasPerformance && !m_pendingTimingCapture->postClosed
+			&& !OsuPerformanceHistory::finished(m_pendingTimingCapture->performance))
 		{
-			auto &window = m_pendingTimingCapture->performance;
-			OsuPerformanceHistory::append(window, *completed);
+			auto &job = *m_pendingTimingCapture;
+			if (!m_performanceHistory.continueWindow(job.performance, now))
+			{
+				job.postClosed = true;
+				job.postEnd = "clock";
+				if (job.screenshot == "pending") job.screenshot = "clock changed before frame";
+			}
+			else if (completed && (now - job.mark < 2 || completed->start <= job.mark))
+				OsuPerformanceHistory::append(job.performance, *completed);
 		}
 	}
 	if (m_pendingTimingCapture && m_pendingTimingCapture->hasPerformance && !m_pendingTimingCapture->postClosed
