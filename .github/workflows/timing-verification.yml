@@ -1,0 +1,40 @@
+name: Timing helper verification
+on:
+  pull_request:
+  push:
+    branches: ['publish/**']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  helpers:
+    runs-on: windows-2022
+    timeout-minutes: 15
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.13'
+      - name: Provision exact GCC8.1 i686 Win32 DWARF2
+        run: python .github/scripts/provision_mingw.py --out "$env:RUNNER_TEMP/mcosu-gcc8"
+      - name: Full registered helper profile
+        run: python .github/scripts/run_guarded.py --label timing --timeout 180 --contains "COMPLETE failures=0 checks=" -- python tools/verify.py --toolchain "$env:MCOSU_TOOLCHAIN"
+      - name: Runner failure contracts
+        run: >-
+          python .github/scripts/run_guarded.py --label runner-contract --timeout 120 --contains "PASS runner-contract: exit=0x00000000 timeout=False" --contains "COMPLETE failures=0 checks=4" -- python tools/verify.py --toolchain "$env:MCOSU_TOOLCHAIN" --profile runner-contract
+      - name: Retain readable success/failure evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: timing-receipts-${{ github.sha }}
+          path: |
+            .ci-runs/
+            .verification-runs/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
