@@ -288,13 +288,26 @@ def positive(value):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--toolchain", required=True, help="Explicit extracted GCC8.1 mingw32 directory")
+    parser.add_argument("--toolchain", help="Explicit extracted GCC8.1 mingw32 directory for timing checks and replay")
     parser.add_argument("--profile", choices=["timing", "runner-contract"], default="timing")
     parser.add_argument("--case", choices=[CASE], help="Run only the named historical/current case, after common preflight")
     parser.add_argument("--capture", help="Replay an exported timing capture from this exact clean source revision")
+    parser.add_argument("--performance", help="Analyze an exported performance.csv and produce a timeline")
     parser.add_argument("--compile-timeout", type=positive, default=60)
     parser.add_argument("--test-timeout", type=positive, default=15)
     args = parser.parse_args()
+    if args.performance:
+        if args.capture or args.case or args.profile != "timing":
+            parser.error("--performance is separate from timing verification and replay")
+        from performance_capture import analyze
+        try:
+            analyze(args.performance, ROOT)
+        except (OSError, ValueError, OverflowError) as error:
+            print("FAIL " + str(error), flush=True)
+            return 1
+        return 0
+    if not args.toolchain:
+        parser.error("--toolchain is required for timing checks and replay")
     parser.error("--case requires --profile timing") if args.case and args.profile != "timing" else None
     if args.capture and (args.case or args.profile != "timing"):
         parser.error("--capture is a separate run from --case or --profile runner-contract")

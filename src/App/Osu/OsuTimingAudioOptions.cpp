@@ -49,6 +49,13 @@ void OsuOptionsMenu::addTimingAudioOptions()
 		if (control.group != OsuTimingAudioHudControls::CAPTURE) continue;
 		auto *var = convar->getConVarByName(control.name);
 		if (control.kind == OsuTimingAudioHudControls::CaptureKey) addKeyBindButton(control.label, var);
+		else if (control.kind == OsuTimingAudioHudControls::Integer)
+		{
+			auto *slider = addSlider(control.label, control.min, control.max, var);
+			slider->setKeyDelta(1);
+			slider->setChangeCallback(fastdelegate::MakeDelegate(this, &OsuOptionsMenu::onSliderChangeInt));
+			m_elements.back().timingHudHelp = control.help;
+		}
 		else addCheckbox(control.label, control.help, var);
 		m_elements.back().searchTags = UString::format("%s %s", control.name, control.help);
 	}

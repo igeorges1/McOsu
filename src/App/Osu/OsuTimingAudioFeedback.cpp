@@ -44,6 +44,9 @@ ConVar osu_timing_audio_trace("osu_timing_audio_trace", false, FCVAR_NONE, "Log 
 ConVar osu_timing_capture_enabled("osu_timing_capture_enabled", false, FCVAR_NONE);
 ConVar osu_timing_capture_screenshot("osu_timing_capture_screenshot", true, FCVAR_NONE);
 ConVar osu_timing_capture_mark_key("osu_timing_capture_mark_key", 0, FCVAR_NONE);
+ConVar osu_timing_capture_performance("osu_timing_capture_performance", false, FCVAR_NONE);
+ConVar osu_timing_capture_frame_history("osu_timing_capture_frame_history", 1024, FCVAR_NONE);
+ConVar osu_timing_capture_frame_tail("osu_timing_capture_frame_tail", 30, FCVAR_NONE);
 
 static double timingAudioValue(float value, double fallback, double minimum, double maximum)
 {
@@ -224,15 +227,23 @@ void OsuTimingAudioFeedback::captureSkip()
 bool OsuTimingAudioFeedback::writeCapture(std::ostream &out, const std::string &source, const std::string &map,
 	const std::string &metadata, double recentSeconds, bool &sufficient)
 {
+	OsuTimingAudioCapture snapshot;
+	if (!snapshotCapture(snapshot, recentSeconds)) return false;
+	sufficient = snapshot.complete() && source != "unknown" && map != "unknown"
+		&& metadata.size() <= OsuTimingAudioCapture::METADATA_LIMIT;
+	return snapshot.write(out, source, map, metadata);
+}
+
+bool OsuTimingAudioFeedback::snapshotCapture(OsuTimingAudioCapture &snapshot, double recentSeconds)
+{
 	syncCapture();
 	if (!m_capture.hasData()) return false;
 	const auto moments = m_recentWindow.getMoments(m_playClock.seconds(), recentSeconds);
 	m_capture.add(OsuTimingAudioCapture::MARK, {engine->getTime(), m_playClock.seconds(), recentSeconds,
 		(long double)moments.count, moments.meanMS, moments.varianceMS2,
 		(long double)m_recentWindow.truncated(m_playClock.seconds(), recentSeconds)});
-	sufficient = m_capture.complete() && source != "unknown" && map != "unknown"
-		&& metadata.size() <= OsuTimingAudioCapture::METADATA_LIMIT;
-	return m_capture.write(out, source, map, metadata);
+	snapshot = m_capture;
+	return true;
 }
 
 bool OsuTimingAudioFeedback::needsActivities(const OsuTimingAudioState::Config &config, bool excludeActivity) const

@@ -25,6 +25,7 @@ public:
 	OsuTimingAudioView getCurrentView(OsuTimingAudioView::Mode mode, double recentSeconds = 5, bool includeCueStatus = false) const;
 	bool writeCapture(std::ostream &out, const std::string &source, const std::string &map,
 		const std::string &metadata, double recentSeconds, bool &sufficient);
+	bool snapshotCapture(OsuTimingAudioCapture &snapshot, double recentSeconds);
 	void captureSkip();
 	unsigned long long captureEpoch() const { return m_captureEpoch; }
 

@@ -24,6 +24,7 @@ class OsuVR;
 class OsuSkin;
 class OsuHitObject;
 class OsuTimingAudioFeedback;
+class OsuTimingAudioCapture;
 
 class OsuDatabaseBeatmap;
 
@@ -91,6 +92,7 @@ public:
 	bool writeTimingCapture(std::ostream &out, const std::string &source, const std::string &map,
 		const std::string &metadata, double recentSeconds, bool &sufficient);
 	unsigned long long getTimingCaptureEpoch() const;
+	bool snapshotTimingCapture(OsuTimingAudioCapture &snapshot, double recentSeconds);
 	void unloadMusic() {unloadMusicInt();}
 	void setVolume(float volume);
 	void setSpeed(float speed);

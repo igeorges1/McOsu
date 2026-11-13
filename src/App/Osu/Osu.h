@@ -12,6 +12,7 @@
 
 #include "App.h"
 #include "MouseListener.h"
+#include "OsuCaptureExport.h"
 
 class CWindowManager;
 
@@ -210,9 +211,14 @@ public:
 
 private:
 	void finishTimingCaptureScreenshot(Graphics *g);
-	UString m_timingCaptureScreenshotDirectory;
-	std::string m_timingCaptureScreenshotMap;
-	unsigned long long m_timingCaptureScreenshotEpoch = 0;
+	void updateCapturedPerformance(double now);
+	void submitTimingCapture();
+	OsuPerformanceHistory m_performanceHistory;
+	OsuCaptureExport m_captureExport;
+	std::unique_ptr<OsuCaptureExport::Job> m_pendingTimingCapture;
+	const OsuBeatmap *m_captureMarkMap = nullptr;
+	int m_performanceCapacity = 0;
+	bool m_performanceRecording = false;
 	int m_timingCaptureHeldKey = 0;
 	static Vector2 g_vInternalResolution;
 
