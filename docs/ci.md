@@ -36,7 +36,7 @@ size/hash checks. From Windows with Python3.13 and7-Zip:
 ```powershell
 python .github/scripts/provision_mingw.py --out C:/temporary/fresh-gcc8 --archive C:/dependencies/i686-8.1.0-release-win32-dwarf-rt_v6-rev0.7z
 python .github/scripts/run_guarded.py --label timing --timeout 180 --contains "COMPLETE failures=0 checks=" -- python tools/verify.py --toolchain C:/temporary/fresh-gcc8/mingw32
-python .github/scripts/run_guarded.py --label runner-contract --timeout 120 --contains "COMPLETE runner-contract failures=0 tests=6" -- python tools/verify.py --toolchain C:/temporary/fresh-gcc8/mingw32 --profile runner-contract
+python .github/scripts/run_guarded.py --label runner-contract --timeout 120 --contains "PASS runner-contract: exit=0x00000000 timeout=False" --contains "COMPLETE failures=0 checks=4" -- python tools/verify.py --toolchain C:/temporary/fresh-gcc8/mingw32 --profile runner-contract
 ```
 
 ## Failure and evidence boundaries

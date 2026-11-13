@@ -160,7 +160,8 @@ negative checks: independent streams/exit 7, real compile failure, nonmodal enab
 assertion exit 1, deadline plus spawned-descendant cleanup, missing completion,
 and misleading completion with exit 7. It records nested process receipts under
 `contract/`; internal negative `VERIFICATION_FAULT` lines are expected. The outer
-profile must exit zero with `COMPLETE runner-contract failures=0 tests=6`.
+profile verifies `COMPLETE runner-contract failures=0 tests=6` in its nested log,
+then exits zero with `COMPLETE failures=0 checks=4` in its own stdout.
 Common preflight still verifies the complete registered input set. No game is built.
 
 To check missing-dependency handling, supply a nonexistent `--toolchain` directory:
