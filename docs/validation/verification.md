@@ -18,3 +18,12 @@ Use the commands in [verification](../verification.md) and [CI](../ci.md).
 Historical headers remain exact Git bytes with blob/hash provenance and license;
 no local historical commit objects or private recipe is needed. New publication
 SHAs need new receipts; original captures are never relabelled.
+
+Publication preparation also exercised the additive CI commands locally with
+the hash-locked archive: fresh extraction/compiler identity, full26 and the
+six-negative runner-contract profile passed. A deliberately corrupt archive was
+rejected before extraction/compiler execution. An initial CI-only expectation
+looked for the nested contract marker in outer stdout; it failed truthfully,
+was retained, and was corrected to require the existing outer success line and
+four-check completion. Product/runner/test code was not changed for that correction.
+These are local preparation results, not independent acceptance or hosted success.
