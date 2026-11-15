@@ -69,8 +69,10 @@ disposition. An early stop leaves the attempt incomplete. Wait for independent
 release and report the result to the coordinator before any retry. The
 budgets are trial values and the target duration is conditional.
 
-The versioned gameplay entrypoint consumes the previously frozen private
-Windows route as an explicit input. A run config contains `budget`, a fresh
+The lab gameplay entrypoint consumes a separately reviewed private Windows
+route. That route is a prerequisite to the historical exact-grant
+workflow and is unavailable from a public checkout alone. A run config
+contains `budget`, a fresh
 `session` UUID, `profile_route` pointing to the frozen 015 directory,
 `image` and `image_sha256`, and `identity` with `pid`, `creation`,
 `tid`, `qpf` and `source`, plus `baseline_mark` with the saved Mark `id`,
@@ -230,17 +232,72 @@ Exit 0 means complete association, 3 means inconclusive or partial, and 1
 means a tool/input failure. None identifies the function, resource, GPU,
 input latency or root cause of a gameplay stutter.
 
-A controlled saved rehearsal qualified the raw reader's witness layout
-and independent reduction for one known stall. The SDK analysis for that
-capture remains inconclusive. A separate controlled rehearsal verified the raw-capable producer and
-seal. Its original whole-window analysis was inconclusive. The revised
-retained-window consumer and ambiguity policy have been checked against
-the exported scheduler evidence. The legacy reader and retained-window command were checked on the sealed
-fixture. The versioned pair's supported whole-window command was subsequently
-qualified on the same manual controlled fixture at tools source `be9da43d`:
-native exit 0 and CLI exit 3 accompanied a complete marked frame and 23 partial
-history frames. Original fixture App, producer and consumer source identities
-remain separate. This is not automated-launch or arbitrary-player qualification.
-Gameplay overhead and general representativeness remain pending.
-Compare matched capture-off, legacy, raw companion, and companion with ETW
-runs before interpreting representativeness.
+A controlled fixture with a manual game start qualified the raw producer,
+independent normal release, seal and supported whole-window paired
+analysis at tools commit `be9da43dff5ae7f73a36aee703baae2c1c5956a7`.
+The qualification certificate has SHA-256
+`740c92a47ad9a32e683b9f600df719fccb7d1dbd7b580ec881e0c875bc7cecad`.
+Native exit 0 and supported command exit 3 accompanied a complete
+marked frame, 98 complete history frames and 23 partial frames. The
+fixture used its own App build. App919 is a separate diagnostic target
+and the tools commit identifies the consumer. The SDK and earlier
+whole-window refusals remain historical outcomes. Automatic launch,
+player freeze cause, representative overhead, physical input, display
+and audio latency remain unqualified.
+
+## Source-only operator tools
+
+From a checkout with Python 3.13+, use
+`python tools/gameplay_operator.py settings --help` to inspect local
+preferences. Use `settings --preferences DIRECTORY --active-cue off --save`
+to save requested preferences in that directory. The defaults and
+limits are in the [control reference](timing-audio-controls.md#gameplay-operator-preferences).
+Preferences do not change game config or the lab mode. Use
+`reopen DIRECTORY` to read an existing bounded operator report. Reopening
+leaves archived claims unverified and never starts a recording or plays a cue.
+`start` reports the unavailable installation prerequisite. This source
+slice does not install or run a collector.
+
+The protected Windows package and operator route need independent
+qualification. One-time administrator setup, if required, is separate
+from per-session consent. The proposed short route uses the existing
+20-second target and 25-second hard bound by default. It requires a
+normal non-owned game, a fresh menu baseline, a focused loaded readiness
+Mark, the original controller and watchdog objects, and an accepted
+owned logger sample before RECORDING. Explicit Stop only requests
+owned cleanup. Unexpected close can leave release unverified.
+An independent exact-session query and original process exits must
+precede marked analysis. An absent evidence Mark leaves the marked
+answer unavailable. Marked-frame status describes scheduler coverage
+of that frame and its recorded scopes. App partial status and incomplete
+history remain separate. Operator proof version 2 and raw reader wire
+schema 2 have separate identities. The existing lab proof and reader
+pair remain applicable to the unchanged lab route.
+
+The offline assembler at `tools/gameplay_operator_bootstrap.py`
+accepts a staged directory, a `package-lock.json` and a fresh output
+directory. Its lock records the exact relative file set, content
+digests, source/tree, dependency edges, origins and notices. The
+runtime closure records the allowed Python imports and package or OS
+DLL providers. Assembly writes the manifest after checking and copying
+the pinned payload. The separate fixed-entry gate consumes original
+installation and resolution observations before passing a launch plan.
+The source checkout can exercise this boundary using inert files and
+injected adapters. It provides no installed trust, actual Windows
+handle evidence or activation.
+
+The local channel binds status, watchdog registration, Start, Stop
+and independent release to the original peer, attempt and sequence.
+Failed or rejected observations clear older cue eligibility. After
+verified release and operator proof, the reader's durable one-use
+reservation is in the normal report root. The reader needs no write
+access to protected capture evidence.
+
+An enabled ACTIVE cue uses 96 ms signed 16-bit mono PCM at 16 kHz,
+8 ms ramps, and either 660 Hz at 12% sample amplitude or 880 Hz at 22%.
+The worker contract limits one request to 500 ms, 64 MiB memory and
+8 KiB output. These are lifecycle and resource bounds. A rejected
+status read invalidates the older recording cue and displays unverified
+status until a valid new phase arrives. A missed or failed cue is
+independent of recorder state. An API result
+cannot establish hearing. Actual Windows playback remains unqualified.
