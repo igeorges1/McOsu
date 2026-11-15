@@ -52,9 +52,17 @@ Applies immediately and saves to ordinary Options config.
 | Capture timing debug evidence | `osu_timing_capture_enabled` | `false` | On / Off | Opt-in local recording. Enable before retrying or starting a map for a replayable prefix. |
 | Record app frame timing | `osu_timing_capture_performance` | `false` | On / Off | Record raw app update cadence and CPU-side update and draw time. Works with timing audio off. |
 | Completed intervals before mark | `osu_timing_capture_frame_history` | `1024` | `120`–`4096` | Performance history in app updates. Changing the size starts a new history. |
-| Completed intervals after mark | `osu_timing_capture_frame_tail` | `30` | `0`–`120` | Collect at most this many post-mark app updates, for up to two seconds. |
+| Completed intervals after mark | `osu_timing_capture_frame_tail` | `30` | `0`–`120` | Collect at most this many post-mark app updates within the post-mark deadline. |
+| Post-mark collection deadline (ms) | `osu_timing_capture_tail_ms` | `2000` | `100`–`5000` | Maximum time after Mark to collect the boundary and tail. Partial reports identify a missed deadline. |
+| Maximum local mark folders | `osu_timing_capture_report_limit` | `12` | `1`–`12` | The exporter refuses new marks at this limit and never deletes old folders. |
 | Save screenshot when marking a problem | `osu_timing_capture_screenshot` | `true` | On / Off | Reads a matching draw on the render thread. Image encoding and export run in the background on Windows. |
 | Mark problem key | `osu_timing_capture_mark_key` | `0` | Key binding or 0 (unbound) | Choose an unused key or use the Mark problem button. Zero is unbound. |
+| Save raw QPC frame timing | `osu_timing_capture_qpc` | `false` | On / Off | Windows primary instance. Requires Record app frame timing. Saves raw clock and process identity with Mark. |
+| Record App update duration | `osu_timing_capture_qpc_update` | `true` | On / Off | Requires raw QPC capture. Keeps update-to-update cadence anchors when duration recording is off. |
+| Record individual draw spans | `osu_timing_capture_qpc_draws` | `true` | On / Off | Requires raw QPC capture. Draw spans remain unavailable when disabled. |
+| Record Mark and readback stages | `osu_timing_capture_qpc_stages` | `true` | On / Off | Requires raw QPC capture. Measures snapshot and optional screenshot readback separately. |
+| Raw draw spans per update interval | `osu_timing_capture_qpc_draw_limit` | `4` | `1`–`4` | Limits retained individual draws. Additional draws are counted and reported as incomplete. |
+| Raw intervals per exported mark | `osu_timing_capture_qpc_row_limit` | `4217` | `1`–`4217` | Keeps rows nearest the Mark on export. Truncation is reported as incomplete. |
 
 ## Peripheral Timing Cue
 
@@ -177,3 +185,58 @@ Applies immediately and saves to ordinary Options config.
 | Left bar inset (screen fraction) | `osu_hud_hiterrorbar_offset_left_percent` | `0` | `-1`–`1` | Relative to the axis of motion. |
 | Draw right bar | `osu_draw_hiterrorbar_right` | `false` | On / Off | Choose which edges show the bar. |
 | Right bar inset (screen fraction) | `osu_hud_hiterrorbar_offset_right_percent` | `0` | `-1`–`1` | Relative to the axis of motion. |
+
+## Gameplay collector and analyzer budgets
+
+All fields are optional integer overrides under `budget` in the external run config.
+Omitted values use the defaults below. Invalid values or relationships refuse the run.
+The resolved budget is written into the run and analysis receipts. These settings do not use game config or audio profiles.
+See the [gameplay attribution guide](gameplay-attribution.md) for the Windows workflow.
+
+| Key | Default | Unit | Accepted domain | Effect |
+| --- | ---: | --- | --- | --- |
+| `target_ms` | 20000 | ms | 1000–30000 | Normal Stop target from active-ready. |
+| `max_ms` | 25000 | ms | 1000–30000 | Hard collection ceiling from active-ready. |
+| `setup_ms` | 5000 | ms | 1000–10000 | Combined pre-readiness setup and watchdog arm-origin allowance from elevated child entry, excluding the readiness wait. |
+| `readiness_ms` | 45000 | ms | 1000–120000 | Maximum wait for a new saved in-game Mark after elevated setup, before watchdog arm or ETW Start. |
+| `arm_ms` | 2000 | ms | 250–3000 | Maximum authenticated watchdog handshake. |
+| `active_ms` | 3000 | ms | 251–5000 | Latest Start, restoration and active-ready from watchdog origin. |
+| `finalize_ms` | 6000 | ms | 3000–10000 | Normal Stop and finalization reserve before watchdog intervention. |
+| `watchdog_ms` | 34000 | ms | 4251–50000 | Independent watchdog intervention deadline from its origin. |
+| `observer_ms` | 90000 | ms | 9251–185000 | Original controller handle wait after consent returns. |
+| `termination_ms` | 3000 | ms | 2000–5000 | Observer termination follow-up wait. |
+| `poll_ms` | 250 | ms | 100–1000 | Interval between effective logger and storage checks. |
+| `poll_late_ms` | 250 | ms | 1–1000 | Permitted poll lateness before stopping incomplete. |
+| `etl_mib` | 256 | MiB | 32–256 | Sequential logger file cap and exclusive reader admission limit. |
+| `early_mib` | 128 | MiB | 1–255 | Observed or near-term projected written and buffered ETL early-stop threshold. |
+| `forecast_window_ms` | 1000 | ms | 250–5000 | Minimum history for a rolling trace-growth forecast. Before this, only observed occupancy applies. |
+| `forecast_horizon_ms` | 2000 | ms | 250–5000 | Maximum forecast lookahead, clipped to remaining target time. |
+| `buffer_kib` | 64 | KiB | 32, 64 | Requested logger buffer size. |
+| `buffers` | 128 | buffers | 16–128 | Requested minimum and maximum logger buffer count. |
+| `initial_free_mib` | 1024 | MiB | 234–16384 | Pre-start free floor on both output and system volumes. |
+| `live_free_mib` | 640 | MiB | 234–16384 | In-capture free floor on both volumes. |
+| `rundown_mib` | 64 | MiB | 8–128 | File-cap headroom for stop and rundown growth. |
+| `app_mib` | 64 | MiB | 1–128 | Free-space reserve for the App capture. |
+| `copy_mib` | 0 | MiB | 0–256 | Additional free-space reserve for any authorized artifact copy. |
+| `report_mib` | 16 | MiB | 1–32 | Combined retained analysis streams, frames and receipts. Also bounds retained raw event rows. |
+| `slices` | 65536 | slices | 1–131072 | Maximum retained scheduler state slices. |
+| `analysis_ms` | 15000 | ms | 1000–60000 | Owned decoder process deadline. |
+| `analysis_memory_mib` | 1024 | MiB | 256–2048 | Owned Windows Job memory limit. |
+
+All values must also satisfy these relationships.
+
+- Target must not exceed the hard collection duration. Arm must fit setup and precede active-ready.
+- Watchdog must cover active-ready, maximum collection and finalization. Observer must cover setup, readiness, watchdog, termination observation and a 1000 ms margin.
+- Buffer size times count cannot exceed 8 MiB. The early threshold plus one full buffer backlog and rundown reserve must fit strictly below the ETL cap.
+- Forecast uses the newest sample at least one window old and looks ahead at most the configured horizon or remaining target time. Observed occupancy is checked every sample, including startup.
+- Initial free space must cover the live floor. The live floor must reserve the ETL cap, app output, copies, report and 200 MiB for system storage.
+
+## Raw gameplay analyzer controls
+
+These offline options are bound by the analysis grant and leave the recorded budget intact.
+
+| Option | Default | Accepted domain | Effect |
+| --- | --- | --- | --- |
+| `--gameplay-raw-window` | `whole` | `whole`, `retained` | Choose the whole trusted window or the retained App span plus context. |
+| `--gameplay-raw-lookaround-ms` | 500 ms in retained mode | 0–5000 ms | Context on each side of the retained App span in ms (0–5000, default 500 in retained mode). |
+| `--gameplay-raw-reader-pair` | Omitted | Reviewed manifest path | Select a reviewed versioned raw reader-pair manifest. Omit for legacy I/O/R. |

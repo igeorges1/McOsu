@@ -1,5 +1,6 @@
 """Supported timing/HUD verification. See docs/verification.md. No third-party Python packages."""
 import argparse
+import ast
 import hashlib
 import json
 import math
@@ -36,6 +37,30 @@ def canonical(value):
 
 def read(path):
     return path.read_text(encoding="utf-8", errors="replace")
+
+
+def inventory_dependencies(entry):
+    """Snapshot the checker's local Python imports without importing them."""
+    tools = ROOT / "tools"
+    found = set()
+    pending = [entry]
+    while pending:
+        source = pending.pop()
+        for node in ast.walk(ast.parse(read(source), filename=str(source))):
+            if isinstance(node, ast.Import):
+                imports = [item.name for item in node.names]
+            elif isinstance(node, ast.ImportFrom) and not node.level and node.module:
+                imports = [node.module]
+            else:
+                continue
+            for module in imports:
+                candidate = tools / (module.split(".", 1)[0] + ".py")
+                if candidate not in found and candidate.is_file():
+                    require(candidate.resolve().parent == tools and not candidate.is_symlink(),
+                            "Inventory import escapes its source checkout: " + str(candidate))
+                    found.add(candidate)
+                    pending.append(candidate)
+    return found
 
 
 class Run:
@@ -112,7 +137,9 @@ class Run:
         for name in ("Evaluation", "RecentWindow", "PlayClock", "HUD", "Reference", "Settings", "HudControls", "Setup", "State"):
             require((ROOT / "src/App/Osu" / ("OsuTimingAudio" + name + ".h")).is_file(), "Missing production header: " + name)
         inputs += [ROOT / "tests" / (suite + ".cpp") for suite in SUITES]
-        inputs += [ROOT / "tests/check-timing-audio-settings.py", ROOT / "docs/timing-audio-controls.md"]
+        checker = ROOT / "tests/check-timing-audio-settings.py"
+        inputs += [checker, ROOT / "docs/timing-audio-controls.md"]
+        inputs += inventory_dependencies(checker)
         inputs += [ROOT / "src/App/Osu" / name for name in
                    ("OsuTimingAudioFeedback.cpp", "OsuHUD.cpp", "OsuBeatmap.cpp", "OsuTimingAudioOptions.cpp", "OsuOptionsMenu.cpp")]
         inputs += [p for p in (ROOT / "tests/verification").rglob("*") if p.is_file()]
@@ -221,8 +248,8 @@ class Run:
             self.save()
             executable = self.compile(suite, generated)
             self.command(suite, [executable], self.args.test_timeout, marker=f"COMPLETE {suite} failures=0")
-        self.command("settings-inventory", [sys.executable, "-B", self.snapshot / "tests/check-timing-audio-settings.py"],
-                     self.args.test_timeout, marker="capture settings match registration and tracked reference")
+        self.command("settings-inventory", [sys.executable, "-I", "-B", self.snapshot / "tests/check-timing-audio-settings.py"],
+                     self.args.test_timeout, marker="COMPLETE timing settings inventory")
 
     def capture(self):
         require(not self.record["source"]["status"], "Replay requires a clean checkout of the captured source")
@@ -294,9 +321,49 @@ def main():
     parser.add_argument("--case", choices=[CASE], help="Run only the named historical/current case, after common preflight")
     parser.add_argument("--capture", help="Replay an exported timing capture from this exact clean source revision")
     parser.add_argument("--performance", help="Analyze an exported performance.csv and produce a timeline")
+    parser.add_argument("--gameplay", help="Analyze a released gameplay ETL and QPC bundle")
+    parser.add_argument("--gameplay-reader", help="Built gameplay reader DLL")
+    parser.add_argument("--gameplay-raw-reader", help="Built native raw ETW gameplay reader EXE")
+    from gameplay_raw import (RAW_LOOKAROUND_HELP, RAW_LOOKAROUND_OPTION, RAW_WINDOW_DEFAULT,
+                              RAW_PAIR_HELP, RAW_PAIR_OPTION, RAW_WINDOW_HELP, RAW_WINDOW_MODES, RAW_WINDOW_OPTION)
+    parser.add_argument(RAW_WINDOW_OPTION, choices=RAW_WINDOW_MODES,
+                        help=f"{RAW_WINDOW_HELP} The default is {RAW_WINDOW_DEFAULT}.")
+    parser.add_argument(RAW_LOOKAROUND_OPTION, type=int, help=RAW_LOOKAROUND_HELP)
+    parser.add_argument(RAW_PAIR_OPTION, help=RAW_PAIR_HELP)
+    parser.add_argument("--gameplay-raw-grant", help="Exact one-shot offline raw analysis grant JSON")
+    parser.add_argument("--describe-gameplay-raw-grant", action="store_true",
+                        help="Print the raw grant fields without starting the reader")
+    parser.add_argument("--dotnet", help="Explicit .NET host for gameplay analysis")
+    parser.add_argument("--output", help="New gameplay report directory")
     parser.add_argument("--compile-timeout", type=positive, default=60)
     parser.add_argument("--test-timeout", type=positive, default=15)
     args = parser.parse_args()
+    if (not (args.gameplay and args.gameplay_raw_reader)
+            and (args.gameplay_raw_window is not None or args.gameplay_raw_lookaround_ms is not None
+                 or args.gameplay_raw_reader_pair is not None)):
+        parser.error("Raw reader options require --gameplay and --gameplay-raw-reader")
+    if args.gameplay:
+        if args.performance or args.capture or args.case or args.profile != "timing" or not args.output:
+            parser.error("--gameplay requires --output and is a separate run")
+        if args.gameplay_raw_reader:
+            if (args.gameplay_reader or args.dotnet
+                    or bool(args.gameplay_raw_grant) == args.describe_gameplay_raw_grant):
+                parser.error("Choose only the raw reader and either its grant or --describe-gameplay-raw-grant")
+        elif not (args.gameplay_reader and args.dotnet) or args.gameplay_raw_grant or args.describe_gameplay_raw_grant:
+            parser.error("--gameplay requires a raw reader with its grant or --gameplay-reader and --dotnet")
+        from gameplay_attribution import analyze as analyze_gameplay
+        options = dict(mode=args.gameplay_raw_window,
+                       lookaround_ms=args.gameplay_raw_lookaround_ms, pair_manifest=args.gameplay_raw_reader_pair)
+        try:
+            if args.describe_gameplay_raw_grant:
+                from gameplay_raw import describe
+                print(json.dumps(describe(args.gameplay, args.gameplay_raw_reader, args.output, **options), indent=2))
+                return 0
+            return analyze_gameplay(args.gameplay, args.gameplay_raw_reader or args.gameplay_reader,
+                                    args.dotnet, args.output, raw_grant=args.gameplay_raw_grant, raw_options=options)
+        except (OSError, ValueError, TypeError, KeyError, OverflowError) as error:
+            print("FAIL " + str(error), flush=True)
+            return 1
     if args.performance:
         if args.capture or args.case or args.profile != "timing":
             parser.error("--performance is separate from timing verification and replay")

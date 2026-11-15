@@ -68,6 +68,9 @@ static const char *const timingCaptureSource = "unknown";
 #endif
 extern ConVar osu_timing_capture_enabled, osu_timing_capture_screenshot, osu_timing_capture_mark_key;
 extern ConVar osu_timing_capture_performance, osu_timing_capture_frame_history, osu_timing_capture_frame_tail;
+extern ConVar osu_timing_capture_qpc, osu_timing_capture_qpc_draws, osu_timing_capture_qpc_stages;
+extern ConVar osu_timing_capture_qpc_draw_limit, osu_timing_capture_qpc_row_limit;
+extern ConVar osu_timing_capture_qpc_update, osu_timing_capture_tail_ms, osu_timing_capture_report_limit;
 extern ConVar osu_timing_visual_enabled;
 #include "OsuBeatmapStandard.h"
 #include "OsuBeatmapMania.h"
@@ -573,7 +576,8 @@ Osu::~Osu()
 	{
 		if (m_pendingTimingCapture->screenshot == "pending") m_pendingTimingCapture->screenshot = "application closed before frame";
 		if (m_pendingTimingCapture->hasPerformance && !m_pendingTimingCapture->postClosed
-			&& !OsuPerformanceHistory::finished(m_pendingTimingCapture->performance))
+			&& (!OsuPerformanceHistory::finished(m_pendingTimingCapture->performance)
+				|| !OsuPerformanceHistory::rawFinished(m_pendingTimingCapture->performance, m_pendingTimingCapture->gameplay)))
 			m_pendingTimingCapture->postEnd = "shutdown";
 		m_captureExport.submit(std::move(m_pendingTimingCapture));
 	}
@@ -605,11 +609,23 @@ void Osu::draw(Graphics *g)
 {
 	const bool measure = osu_timing_capture_performance.getBool() && getInstanceID() == 0;
 	const double drawStart = measure ? engine->getTimeReal() : 0;
+	const auto rawDraw = measure && m_gameplayConfig.draws ? gameplayCaptureTick() : -1;
+	const auto finishDraw = [&]()
+	{
+		if (measure) m_performanceHistory.endDraw(engine->getTimeReal() - drawStart);
+		if (measure && m_gameplayActive && m_gameplayConfig.draws)
+		{
+			OsuGameplayCapture::Span span;
+			span.start = rawDraw;
+			span.end = gameplayCaptureTick();
+			m_performanceHistory.endRawDraw(span, m_gameplayConfig.drawLimit);
+		}
+	};
 	if (m_skin == NULL) // sanity check
 	{
 		g->setColor(0xffff0000);
 		g->fillRect(0, 0, getScreenWidth(), getScreenHeight());
-		if (measure) m_performanceHistory.endDraw(engine->getTimeReal() - drawStart);
+		finishDraw();
 		return;
 	}
 
@@ -860,7 +876,7 @@ void Osu::draw(Graphics *g)
 		finishTimingCaptureScreenshot(g);
 	if (isInVRMode())
 		openvr->draw(g);
-	if (measure) m_performanceHistory.endDraw(engine->getTimeReal() - drawStart);
+	finishDraw();
 }
 
 void Osu::drawVR(Graphics *g)
@@ -896,9 +912,11 @@ void Osu::drawVR(Graphics *g)
 void Osu::update()
 {
 	const bool measure = osu_timing_capture_performance.getBool() && getInstanceID() == 0;
-	const bool captureWork = measure || m_pendingTimingCapture || m_captureExport.busy() || m_performanceRecording;
+	const bool captureWork = measure || m_pendingTimingCapture || m_captureExport.busy() || m_performanceRecording
+		|| (getInstanceID() == 0 && osu_timing_capture_qpc.getBool());
+	const auto raw = measure && osu_timing_capture_qpc.getBool() ? OsuGameplayCapture::ticks() : -1;
 	const double updateStart = captureWork ? engine->getTimeReal() : 0;
-	if (captureWork) updateCapturedPerformance(updateStart);
+	if (captureWork) updateCapturedPerformance(updateStart, raw);
 	const int wheelDelta = engine->getMouse()->getWheelDeltaVertical(); // HACKHACK: songbrowser focus
 
 	if (m_skin != NULL)
@@ -1253,6 +1271,7 @@ void Osu::update()
 		fireResolutionChanged();
 	}
 	if (measure) m_performanceHistory.endUpdate(engine->getTimeReal() - updateStart);
+	if (measure && m_gameplayActive && m_gameplayConfig.update) m_performanceHistory.endRawUpdate(gameplayCaptureTick());
 }
 
 void Osu::updateMods()
@@ -1904,8 +1923,39 @@ void Osu::markTimingCapture()
 	job->source = timingCaptureSource;
 	job->mark = start;
 	job->hasPerformance = performance;
+	auto &rawMark = job->gameplay;
+	rawMark.config = m_gameplayConfig;
+	rawMark.config.requested = osu_timing_capture_qpc.getBool();
+	rawMark.status = gameplayCaptureStatus();
+	rawMark.historyRequested = osu_timing_capture_frame_history.getInt();
+	rawMark.history = m_performanceCapacity;
+	rawMark.tailRequested = osu_timing_capture_frame_tail.getInt();
+	rawMark.tail = std::max(0, std::min(120, rawMark.tailRequested));
+	rawMark.tailMilliseconds = osu_timing_capture_tail_ms.getInt();
+	const int folderLimit = osu_timing_capture_report_limit.getInt();
+	if (rawMark.tailMilliseconds < 100 || rawMark.tailMilliseconds > 5000 || folderLimit < 1 || folderLimit > 12)
+		return fail("Capture tail deadline or report limit is outside its supported range.");
+	job->folderLimit = static_cast<unsigned>(folderLimit);
+	if (rawMark.config.requested)
+	{
+		const auto *markMap = isInPlayMode() ? getSelectedBeatmap() : nullptr;
+		rawMark.id = ++m_gameplayMark;
+		rawMark.identity = m_gameplayIdentity;
+		rawMark.tick = gameplayCaptureTick();
+		const bool sameConfig = m_gameplayConfig.requested
+			&& m_gameplayConfig.update == osu_timing_capture_qpc_update.getBool()
+			&& m_gameplayConfig.draws == osu_timing_capture_qpc_draws.getBool()
+			&& m_gameplayConfig.stages == osu_timing_capture_qpc_stages.getBool()
+			&& m_gameplayConfig.drawLimit == osu_timing_capture_qpc_draw_limit.getInt()
+			&& m_gameplayConfig.rowLimit == osu_timing_capture_qpc_row_limit.getInt()
+			&& markMap == m_gameplayMap && (markMap == nullptr || markMap->getTimingCaptureEpoch() == m_gameplayMapEpoch)
+			&& m_performanceCapacity == std::max(120, std::min(4096, rawMark.historyRequested));
+		if (performance && sameConfig && m_performanceHistory.rawOpen(m_gameplayEpoch, rawMark.tick))
+			rawMark.epoch = m_gameplayEpoch;
+		else if (m_gameplayActive) rawMark.status = sameConfig ? "no open raw update" : "settings changed before raw update";
+	}
 	if (performance)
-		job->performance = m_performanceHistory.mark(start, std::max(0, std::min(120, osu_timing_capture_frame_tail.getInt())));
+		job->performance = m_performanceHistory.mark(start, rawMark.tail, rawMark.epoch);
 	auto *sceneMap = isInPlayMode() ? getSelectedBeatmap() : nullptr;
 	if (sceneMap != nullptr)
 	{
@@ -1917,6 +1967,8 @@ void Osu::markTimingCapture()
 		}
 	}
 	const bool screenshot = osu_timing_capture_screenshot.getBool();
+	rawMark.screenshot = screenshot;
+	rawMark.model = osu_timing_capture_enabled.getBool();
 	if (screenshot) job->screenshot = "pending";
 	if (timing && ready)
 	{
@@ -1962,20 +2014,27 @@ void Osu::markTimingCapture()
 	if (!job->hasTiming && !job->hasPerformance)
 		return fail("No timing observations are available for this mark.");
 	job->snapshotMS = (engine->getTimeReal() - start) * 1000;
+	if (rawMark.epoch && rawMark.config.stages) rawMark.snapshotEnd = gameplayCaptureTick();
 	m_captureMarkMap = sceneMap;
 	m_pendingTimingCapture = std::move(job);
 	m_notificationOverlay->addNotification("Capture queued.", 0xffffffff, false, 1.5f);
 	submitTimingCapture();
 }
 
-void Osu::updateCapturedPerformance(double now)
+std::int64_t Osu::gameplayCaptureTick() const
+{
+	return m_gameplayActive && OsuGameplayCapture::thread() == m_gameplayIdentity.tid
+		? OsuGameplayCapture::ticks() : -1;
+}
+
+void Osu::updateCapturedPerformance(double now, std::int64_t raw)
 {
 	OsuCaptureExport::Result result;
 	if (m_captureExport.poll(result))
 	{
-		if (result.error.empty() && !result.timingPartial)
+		if (result.error.empty() && !result.timingPartial && !result.gameplayPartial)
 			m_notificationOverlay->addNotification(UString::format("Capture saved to %s", result.directory.c_str()), 0xffffffff, false, 2.5f);
-		else if (result.timing || result.performance || result.screenshot)
+		else if (result.timing || result.performance || result.screenshot || result.gameplay)
 			m_notificationOverlay->addNotification(UString::format("Capture partly saved to %s", result.directory.c_str()), 0xffff8888, false, 2.5f);
 		else
 			m_notificationOverlay->addNotification(result.error.c_str(), 0xffff8888, false, 2.5f);
@@ -1988,22 +2047,57 @@ void Osu::updateCapturedPerformance(double now)
 	m_performanceCapacity = capacity;
 	m_performanceHistory.setCapacity(capacity);
 	auto *map = isInPlayMode() ? getSelectedBeatmap() : nullptr;
+	const auto mapEpoch = map == nullptr ? 0 : map->getTimingCaptureEpoch();
+	OsuGameplayCapture::Config config;
+	config.requested = osu_timing_capture_qpc.getBool();
+	if (config.requested)
+	{
+		config.update = osu_timing_capture_qpc_update.getBool();
+		config.draws = osu_timing_capture_qpc_draws.getBool();
+		config.stages = osu_timing_capture_qpc_stages.getBool();
+		config.drawLimit = osu_timing_capture_qpc_draw_limit.getInt();
+		config.rowLimit = osu_timing_capture_qpc_row_limit.getInt();
+	}
+	const bool wanted = config.requested && recording && config.valid() && OsuGameplayCapture::supported();
+	const bool changedThread = wanted && m_gameplayIdentity.valid() && OsuGameplayCapture::thread() != m_gameplayIdentity.tid;
+	const bool reset = interrupted || !(config == m_gameplayConfig) || map != m_gameplayMap
+		|| mapEpoch != m_gameplayMapEpoch || changedThread || raw < 0 || raw <= m_gameplayLast
+		|| !OsuPerformanceHistory::validStamp(now) || (m_gameplayActive && now < m_gameplayLastRelative);
+	if (wanted && (!m_gameplayIdentity.valid() || changedThread)) m_gameplayIdentity = OsuGameplayCapture::identify();
+	const bool active = wanted && raw >= 0 && m_gameplayIdentity.valid() && OsuPerformanceHistory::validStamp(now);
+	if (active && (reset || !m_gameplayActive)) ++m_gameplayEpoch;
+	m_gameplayActive = active;
+	m_gameplayLast = active ? raw : -1;
+	m_gameplayLastRelative = now;
+	m_gameplayConfig = config;
+	m_gameplayMap = map;
+	m_gameplayMapEpoch = mapEpoch;
+	m_gameplayStatus = active ? "recording" : !config.requested ? "disabled" : !recording ? "requires app frame timing"
+		: !OsuGameplayCapture::supported() ? "unsupported platform" : !config.valid() ? "invalid raw capture limits" : "clock or identity unavailable";
 	if (m_pendingTimingCapture)
 	{
 		auto &job = *m_pendingTimingCapture;
 		const bool changed = map != m_captureMarkMap || (map != nullptr && map->getTimingCaptureEpoch() != job.epoch);
-		const bool expired = !OsuPerformanceHistory::validStamp(now) || now - job.mark >= 2 || now < job.mark;
+		const bool expired = !OsuPerformanceHistory::validStamp(now) || (now - job.mark) * 1000 >= job.gameplay.tailMilliseconds || now < job.mark;
 		if ((changed || expired) && job.screenshot == "pending")
 			job.screenshot = changed ? "scene changed before frame" : "no matching draw before deadline";
-		if (job.hasPerformance && !job.postClosed && !OsuPerformanceHistory::finished(job.performance) && (changed || interrupted))
+		const bool rawChanged = job.gameplay.epoch && (!active || job.gameplay.epoch != m_gameplayEpoch);
+		if (job.hasPerformance && !job.postClosed && (changed || interrupted || rawChanged)
+			&& (!OsuPerformanceHistory::finished(job.performance)
+				|| !OsuPerformanceHistory::rawFinished(job.performance, job.gameplay)))
 		{
 			job.postClosed = true;
-			job.postEnd = changed ? "scene" : "settings";
+			job.postEnd = changed ? "scene" : rawChanged ? "raw epoch" : "settings";
 		}
 	}
 	if (recording)
 	{
 		OsuPerformanceHistory::Frame context;
+		if (active)
+		{
+			context.raw.epoch = m_gameplayEpoch;
+			context.raw.update.start = raw;
+		}
 		if (engine->hasFocus()) context.context |= OsuPerformanceHistory::FOCUSED;
 		if (engine->isMinimized()) context.context |= OsuPerformanceHistory::MINIMIZED;
 		if (map != nullptr)
@@ -2024,7 +2118,8 @@ void Osu::updateCapturedPerformance(double now)
 		if (vsync != nullptr) context.vsync = vsync->getBool();
 		const auto *completed = m_performanceHistory.begin(now, context);
 		if (m_pendingTimingCapture && m_pendingTimingCapture->hasPerformance && !m_pendingTimingCapture->postClosed
-			&& !OsuPerformanceHistory::finished(m_pendingTimingCapture->performance))
+			&& (!OsuPerformanceHistory::finished(m_pendingTimingCapture->performance)
+				|| !OsuPerformanceHistory::rawFinished(m_pendingTimingCapture->performance, m_pendingTimingCapture->gameplay)))
 		{
 			auto &job = *m_pendingTimingCapture;
 			if (!m_performanceHistory.continueWindow(job.performance, now))
@@ -2033,12 +2128,17 @@ void Osu::updateCapturedPerformance(double now)
 				job.postEnd = "clock";
 				if (job.screenshot == "pending") job.screenshot = "clock changed before frame";
 			}
-			else if (completed && (now - job.mark < 2 || completed->start <= job.mark))
-				OsuPerformanceHistory::append(job.performance, *completed);
+			else if (completed && ((now - job.mark) * 1000 < job.gameplay.tailMilliseconds || completed->start <= job.mark))
+			{
+				if (!OsuPerformanceHistory::finished(job.performance)) OsuPerformanceHistory::append(job.performance, *completed);
+				OsuPerformanceHistory::appendRaw(job.performance, *completed, job.gameplay);
+			}
 		}
 	}
 	if (m_pendingTimingCapture && m_pendingTimingCapture->hasPerformance && !m_pendingTimingCapture->postClosed
-		&& !OsuPerformanceHistory::finished(m_pendingTimingCapture->performance) && now - m_pendingTimingCapture->mark >= 2)
+		&& (!OsuPerformanceHistory::finished(m_pendingTimingCapture->performance)
+			|| !OsuPerformanceHistory::rawFinished(m_pendingTimingCapture->performance, m_pendingTimingCapture->gameplay))
+		&& (now - m_pendingTimingCapture->mark) * 1000 >= m_pendingTimingCapture->gameplay.tailMilliseconds)
 	{
 		m_pendingTimingCapture->postClosed = true;
 		m_pendingTimingCapture->postEnd = "deadline";
@@ -2051,7 +2151,7 @@ void Osu::submitTimingCapture()
 	if (!m_pendingTimingCapture) return;
 	const auto &job = *m_pendingTimingCapture;
 	if (job.screenshot == "pending" || (job.hasPerformance && !job.postClosed
-		&& !OsuPerformanceHistory::finished(job.performance))) return;
+		&& (!OsuPerformanceHistory::finished(job.performance) || !OsuPerformanceHistory::rawFinished(job.performance, job.gameplay)))) return;
 	if (!m_captureExport.submit(std::move(m_pendingTimingCapture)))
 		m_notificationOverlay->addNotification("Capture worker could not be started.", 0xffff8888, false, 2.5f);
 }
@@ -2072,7 +2172,9 @@ void Osu::finishTimingCaptureScreenshot(Graphics *g)
 			job.width = static_cast<unsigned>(resolution.x);
 			job.height = static_cast<unsigned>(resolution.y);
 			const double start = engine->getTimeReal();
+			if (job.gameplay.epoch && job.gameplay.config.stages) job.gameplay.readback.start = gameplayCaptureTick();
 			job.pixels = g->getScreenshot();
+			if (job.gameplay.epoch && job.gameplay.config.stages) job.gameplay.readback.end = gameplayCaptureTick();
 			job.readbackMS = (engine->getTimeReal() - start) * 1000;
 			if (job.pixels.size() == static_cast<size_t>(job.width) * job.height * 3)
 				job.screenshot = "frame read";

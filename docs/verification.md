@@ -123,6 +123,10 @@ flags, invocation, selected profile/case, generated test identities, direct chil
 PID/argv/cwd/executable hash, elapsed time, actual exit and unsigned hex code,
 timeout/error, separate stdout/stderr logs, expectations and first failure.
 Tests and inventory run from the snapshot, avoiding edits halfway through a run;
+the inventory snapshot also includes the checker's transitive local Python
+imports and their hashes. Its isolated child prints
+`COMPLETE timing settings inventory` after the reference and assertions
+pass. Counts in the preceding line are diagnostic details.
 the runner also rejects changed source inputs before marking success.
 
 Assertions remain enabled. Generated suite copies preserve original test bodies:
@@ -179,3 +183,15 @@ general gameplay reproducibility claim follows.
 For an exported live timing report, use [capture replay](timing-capture.md#reproduce-a-marked-sequence) with the same toolchain and the exact clean source named in the report.
 
 For raw app cadence, use [performance analysis](performance-capture.md#analyze-a-mark) with `--performance`. It produces a graph and summary from the recorded observations without compiling or replaying timing helpers.
+
+### Gameplay raw scheduler evidence
+
+Run `python tests/gameplay_attribution_test.py` and
+`python tests/gameplay_raw_test.py` for the owned-seal, output-budget and
+offline CLI contracts, including retained-window grants and equal-QPC
+ordering barriers. The paired-reader checks cover wire selection,
+legacy refusal of unrequested versions and unchanged hard failures. Compile `tests/gameplay_raw_reader_test.cpp` with
+the [raw reader build flags](gameplay-attribution.md#raw-classic-etw-reader)
+in place of the reader source and run the resulting test executable.
+These checks use inert metadata and event fixtures. Actual ETL coverage
+and producer qualification are recorded separately.

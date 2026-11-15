@@ -4,6 +4,9 @@ Timing/HUD software checks and the reusable regression command are documented in
 [Verification](docs/verification.md). Build/runtime tools have a separate
 [guide in the accepted complete tooling checkout](https://github.com/igeorges1/McOsu/blob/3c69a2a4e374a24bda8a3c9574e772ab85241b30/tools/runtime/README.md).
 
+See [gameplay scheduler attribution](docs/gameplay-attribution.md) for the
+optional Windows raw frame clock companion and separate offline analysis.
+
 **[DOWNLOAD > https://github.com/McKay42/McOsu/releases](https://github.com/McKay42/McOsu/releases)**
 
 **Quick tutorial by Omgforz: [https://www.youtube.com/watch?v=PCLpOdcMQuc](https://www.youtube.com/watch?v=PCLpOdcMQuc)**

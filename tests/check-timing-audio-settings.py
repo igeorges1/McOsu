@@ -1,8 +1,10 @@
 """Validate timing controls and keep the tracked reference tied to source metadata."""
 import argparse
+from dataclasses import fields as dataclass_fields
 from decimal import Decimal
 from pathlib import Path
 import re
+import sys
 
 root = Path(__file__).resolve().parents[1]
 osu = root / "src/App/Osu"
@@ -104,10 +106,46 @@ for name, label, section, kind, lo, hi, help_text in hud_fields:
         accepted = limits(kind, lo, hi, default)
     lines.append(f"| {label} | `{name}` | `{default}` | {accepted} | {help_text} |")
 
+sys.path.insert(0, str(root / "tools"))
+from gameplay_budget import Budget
+from gameplay_raw import (RAW_LOOKAROUND, RAW_LOOKAROUND_DEFAULT, RAW_LOOKAROUND_HELP,
+                          RAW_LOOKAROUND_OPTION, RAW_PAIR_HELP, RAW_PAIR_OPTION, RAW_WINDOW_DEFAULT, RAW_WINDOW_HELP,
+                          RAW_WINDOW_MODES, RAW_WINDOW_OPTION)
+
+Budget.parse({})
+lines += ["", "## Gameplay collector and analyzer budgets", "",
+          "All fields are optional integer overrides under `budget` in the external run config.",
+          "Omitted values use the defaults below. Invalid values or relationships refuse the run.",
+          "The resolved budget is written into the run and analysis receipts. These settings do not use game config or audio profiles.",
+          "See the [gameplay attribution guide](gameplay-attribution.md) for the Windows workflow.", "",
+          "| Key | Default | Unit | Accepted domain | Effect |",
+          "| --- | ---: | --- | --- | --- |"]
+for spec in dataclass_fields(Budget):
+    data = spec.metadata
+    assert data["unit"] and data["help"], f"Missing budget documentation for {spec.name}"
+    allowed = (", ".join(str(choice) for choice in data["choices"]) if data["choices"] else
+               f'{data["minimum"]}–{data["maximum"]}')
+    lines.append(f'| `{spec.name}` | {spec.default} | {data["unit"]} | {allowed} | {data["help"]} |')
+lines += ["", "All values must also satisfy these relationships.", ""]
+lines.extend("- " + relationship for relationship in Budget.RELATIONSHIPS)
+
+assert RAW_WINDOW_DEFAULT in RAW_WINDOW_MODES and RAW_LOOKAROUND_DEFAULT in RAW_LOOKAROUND
+lines += ["", "## Raw gameplay analyzer controls", "",
+          "These offline options are bound by the analysis grant and leave the recorded budget intact.", "",
+          "| Option | Default | Accepted domain | Effect |",
+          "| --- | --- | --- | --- |",
+          f"| `{RAW_WINDOW_OPTION}` | `{RAW_WINDOW_DEFAULT}` | "
+          + ", ".join(f"`{mode}`" for mode in RAW_WINDOW_MODES) + f" | {RAW_WINDOW_HELP} |",
+          f"| `{RAW_LOOKAROUND_OPTION}` | {RAW_LOOKAROUND_DEFAULT} ms in retained mode | "
+          f"{RAW_LOOKAROUND.start}–{RAW_LOOKAROUND.stop - 1} ms | {RAW_LOOKAROUND_HELP} |",
+          f"| `{RAW_PAIR_OPTION}` | Omitted | Reviewed manifest path | {RAW_PAIR_HELP} |"]
+
 reference = root / "docs/timing-audio-controls.md"
 generated = "\n".join(lines) + "\n"
 if args.write_docs:
     reference.write_text(generated, encoding="utf-8")
 else:
     assert reference.read_text(encoding="utf-8") == generated, "Stale timing reference. Regenerate it with --write-docs."
-print(f"PASS: {len(audio_fields)} audio, {len(hud)} HUD, {len(visual)} peripheral and {len(capture)} capture settings match registration and tracked reference")
+print(f"PASS: {len(audio_fields)} audio, {len(hud)} HUD, {len(visual)} peripheral, {len(capture)} capture "
+      f"and {len(dataclass_fields(Budget))} gameplay budget settings plus raw analyzer controls match source and tracked reference")
+print("COMPLETE timing settings inventory")
