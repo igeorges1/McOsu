@@ -53,7 +53,8 @@ def main():
                  "tools/gameplay-raw-reader/witness.cpp", "tools/gameplay_attribution.py",
                  "tools/gameplay_budget.py", "tools/gameplay_collector.py", "tools/gameplay_raw.py",
                  "tools/gameplay_record.py", "tools/gameplay_process.py", "tools/verification_process.py",
-                 ".github/scripts/gameplay_smoke.py", ".github/workflows/gameplay-verification.yml"]
+                 ".github/scripts/gameplay_smoke.py", ".github/scripts/gameplay_smoke.cmd",
+                 ".github/workflows/gameplay-verification.yml"]
         paths += [str(p.relative_to(ROOT)).replace("\\", "/")
                   for p in (ROOT / "src/App/Osu").glob("OsuGameplay*.h")]
         paths += ["src/App/Osu/OsuPerformanceHistory.h"]

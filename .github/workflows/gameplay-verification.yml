@@ -24,14 +24,10 @@ jobs:
       - name: Provision exact GCC8.1 i686 Win32 DWARF2
         run: python .github/scripts/provision_mingw.py --out "$env:RUNNER_TEMP/mcosu-gameplay-gcc8"
       - name: Offline App helper, raw native predicates, policies and metadata
-        shell: cmd
-        run: |
-          set "PATH=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer;%PATH%"
-          for /f "usebackq delims=" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "MCOSU_VS_PATH=%%i"
-          if not defined MCOSU_VS_PATH exit /b 1
-          call "%MCOSU_VS_PATH%\Common7\Tools\VsDevCmd.bat" -no_logo -arch=x64 -host_arch=x64
-          if errorlevel 1 exit /b 1
-          python .github/scripts/run_guarded.py --label gameplay-offline --timeout 240 --contains "COMPLETE gameplay offline failures=0 checks=5" -- python .github/scripts/gameplay_smoke.py
+        run: >-
+          python .github/scripts/run_guarded.py --label gameplay-offline --timeout 240
+          --contains "COMPLETE gameplay offline failures=0 checks=5"
+          -- cmd.exe /d /c .github\scripts\gameplay_smoke.cmd
       - name: Retain readable success and failure evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

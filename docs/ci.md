@@ -86,6 +86,8 @@ allowance. Actual PID, executable hash, exit, timeout, stream and completion che
 are retained before interpreting the result. The entire smoke command has a
 240-second external bound. Source/tree, input hashes and individual unittest
 counts are recorded; any unexpected failure stops the remaining checks.
+The guarded command includes Visual Studio discovery and environment setup,
+so that setup is covered by the same external deadline and owned Job.
 Readable `.ci-runs` evidence uploads on success or failure for 14 days.
 
 This job does not build or start the game, use private route015, query tokens,
