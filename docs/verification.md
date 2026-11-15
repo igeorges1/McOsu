@@ -123,6 +123,10 @@ flags, invocation, selected profile/case, generated test identities, direct chil
 PID/argv/cwd/executable hash, elapsed time, actual exit and unsigned hex code,
 timeout/error, separate stdout/stderr logs, expectations and first failure.
 Tests and inventory run from the snapshot, avoiding edits halfway through a run;
+the inventory snapshot also includes the checker's transitive local Python
+imports and their hashes. Its isolated child prints
+`COMPLETE timing settings inventory` after the reference and assertions
+pass. Counts in the preceding line are diagnostic details.
 the runner also rejects changed source inputs before marking success.
 
 Assertions remain enabled. Generated suite copies preserve original test bodies:

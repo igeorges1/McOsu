@@ -148,3 +148,4 @@ else:
     assert reference.read_text(encoding="utf-8") == generated, "Stale timing reference. Regenerate it with --write-docs."
 print(f"PASS: {len(audio_fields)} audio, {len(hud)} HUD, {len(visual)} peripheral, {len(capture)} capture "
       f"and {len(dataclass_fields(Budget))} gameplay budget settings plus raw analyzer controls match source and tracked reference")
+print("COMPLETE timing settings inventory")

@@ -14,7 +14,7 @@ from unittest.mock import patch
 import uuid
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
-from gameplay_attribution import analyze, checked, reduce_span
+from gameplay_attribution import analyze, checked, local_artifact, reduce_span
 from gameplay_budget import Budget, MIB
 from gameplay_collector import MODE, PROFILE
 from gameplay_process import digest
@@ -85,6 +85,7 @@ def fixture(root, identity, *, owns_app=True):
 
 
 def seal_fixture(root):
+    root = root.resolve()
     bundle = root / "bundle.json"
     seal(root, root / "gameplay.qpc", root / "independent-absence.json", bundle,
          raw_query=root / "independent-query.json")
@@ -109,10 +110,31 @@ WITNESSES = [event(20, "I"), event(25, "O", 5), event(30, "R", 1), event(33, "I"
 
 
 class RawGameplayTests(TestCase):
+    def test_seal_fixture_resolves_alias_without_relaxing_artifact_guards(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve() / "capture"
+            root.mkdir()
+            alias = root / "alias"
+            alias.mkdir()
+            fixture(root, IDENTITY)
+            bundle = seal_fixture(alias / "..")
+            self.assertEqual(bundle.parent, root)
+            self.assertIn("raw_evidence", json.loads(bundle.read_text(encoding="utf-8")))
+
+            with self.assertRaisesRegex(ValueError, "bundle-local filename"):
+                local_artifact(root, "../outside.json")
+            with patch.object(Path, "resolve", return_value=root.parent / "outside.json"):
+                with self.assertRaisesRegex(ValueError, "escapes its directory"):
+                    local_artifact(root, bundle.name)
+            for kind in ("is_symlink", "is_junction"):
+                with self.subTest(kind=kind), patch.object(Path, kind, return_value=True):
+                    with self.assertRaisesRegex(ValueError, "escapes its directory"):
+                        local_artifact(root, bundle.name)
+
     def test_explicit_cli_and_marked_frame_with_unknown_history(self):
         for identity in (IDENTITY, IDENTITY | dict(pid=885, tid=332, qpf=2000)):
             with self.subTest(pid=identity["pid"]), tempfile.TemporaryDirectory() as directory:
-                root = Path(directory)
+                root = Path(directory).resolve()
                 fixture(root, identity)
                 bundle = seal_fixture(root)
                 exe, grant, output = (root / n for n in ("raw.exe", "offline-grant.json", "output"))
@@ -151,7 +173,7 @@ class RawGameplayTests(TestCase):
 
     def test_swapped_or_tampered_chain_refuses_before_reader(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             for name in ("a", "b"):
                 folder = root / name
                 folder.mkdir()
@@ -185,7 +207,7 @@ class RawGameplayTests(TestCase):
     def test_sealer_rejects_coherent_files_with_invalid_live_evidence(self):
         for edit in ("short-polls", "live-tid", "loss", "wrong-query"):
             with self.subTest(edit=edit), tempfile.TemporaryDirectory() as directory:
-                root = Path(directory)
+                root = Path(directory).resolve()
                 fixture(root, IDENTITY)
                 controller = root / "controller.json"
                 final = json.loads(controller.read_bytes())
@@ -210,7 +232,7 @@ class RawGameplayTests(TestCase):
 
     def test_independent_release_allows_player_app_to_keep_running(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             # The target is still live according to the independent witness.
             # Only the recorder's controller belongs to the owned set.
             fixture(root, IDENTITY, owns_app=False)
@@ -223,7 +245,7 @@ class RawGameplayTests(TestCase):
         for change in ("controller-alive", "controller-omitted", "owned-app-omitted", "nonowned-app-listed",
                        "forged-target-creation", "forged-target-pid", "ambiguous-role", "forged-role-and-owned-set"):
             with self.subTest(change=change), tempfile.TemporaryDirectory() as directory:
-                root = Path(directory)
+                root = Path(directory).resolve()
                 fixture(root, IDENTITY)
                 path = root / "independent-absence.json"
                 absence = json.loads(path.read_bytes())
@@ -335,7 +357,7 @@ class RawGameplayTests(TestCase):
 
     def test_retained_cli_grant_binds_selected_window(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             fixture(root, IDENTITY)
             bundle = seal_fixture(root)
             exe, grant, output = (root / name for name in ("raw.exe", "grant.json", "out"))
@@ -384,7 +406,7 @@ class RawGameplayTests(TestCase):
 
     def test_reviewed_pair_binds_sources_schema_and_exact_grant(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             fixture(root, IDENTITY)
             bundle = seal_fixture(root)
             reader, manifest, grant, output = (root / name for name in ("raw.exe", "pair.json", "grant.json", "out"))

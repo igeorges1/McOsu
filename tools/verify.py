@@ -1,5 +1,6 @@
 """Supported timing/HUD verification. See docs/verification.md. No third-party Python packages."""
 import argparse
+import ast
 import hashlib
 import json
 import math
@@ -36,6 +37,30 @@ def canonical(value):
 
 def read(path):
     return path.read_text(encoding="utf-8", errors="replace")
+
+
+def inventory_dependencies(entry):
+    """Snapshot the checker's local Python imports without importing them."""
+    tools = ROOT / "tools"
+    found = set()
+    pending = [entry]
+    while pending:
+        source = pending.pop()
+        for node in ast.walk(ast.parse(read(source), filename=str(source))):
+            if isinstance(node, ast.Import):
+                imports = [item.name for item in node.names]
+            elif isinstance(node, ast.ImportFrom) and not node.level and node.module:
+                imports = [node.module]
+            else:
+                continue
+            for module in imports:
+                candidate = tools / (module.split(".", 1)[0] + ".py")
+                if candidate not in found and candidate.is_file():
+                    require(candidate.resolve().parent == tools and not candidate.is_symlink(),
+                            "Inventory import escapes its source checkout: " + str(candidate))
+                    found.add(candidate)
+                    pending.append(candidate)
+    return found
 
 
 class Run:
@@ -112,7 +137,9 @@ class Run:
         for name in ("Evaluation", "RecentWindow", "PlayClock", "HUD", "Reference", "Settings", "HudControls", "Setup", "State"):
             require((ROOT / "src/App/Osu" / ("OsuTimingAudio" + name + ".h")).is_file(), "Missing production header: " + name)
         inputs += [ROOT / "tests" / (suite + ".cpp") for suite in SUITES]
-        inputs += [ROOT / "tests/check-timing-audio-settings.py", ROOT / "docs/timing-audio-controls.md"]
+        checker = ROOT / "tests/check-timing-audio-settings.py"
+        inputs += [checker, ROOT / "docs/timing-audio-controls.md"]
+        inputs += inventory_dependencies(checker)
         inputs += [ROOT / "src/App/Osu" / name for name in
                    ("OsuTimingAudioFeedback.cpp", "OsuHUD.cpp", "OsuBeatmap.cpp", "OsuTimingAudioOptions.cpp", "OsuOptionsMenu.cpp")]
         inputs += [p for p in (ROOT / "tests/verification").rglob("*") if p.is_file()]
@@ -221,8 +248,8 @@ class Run:
             self.save()
             executable = self.compile(suite, generated)
             self.command(suite, [executable], self.args.test_timeout, marker=f"COMPLETE {suite} failures=0")
-        self.command("settings-inventory", [sys.executable, "-B", self.snapshot / "tests/check-timing-audio-settings.py"],
-                     self.args.test_timeout, marker="capture settings match registration and tracked reference")
+        self.command("settings-inventory", [sys.executable, "-I", "-B", self.snapshot / "tests/check-timing-audio-settings.py"],
+                     self.args.test_timeout, marker="COMPLETE timing settings inventory")
 
     def capture(self):
         require(not self.record["source"]["status"], "Replay requires a clean checkout of the captured source")
