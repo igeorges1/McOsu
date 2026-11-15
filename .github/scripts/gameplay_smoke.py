@@ -50,6 +50,11 @@ def main():
         paths = ["tests/OsuGameplayCaptureTest.cpp", "tests/gameplay_raw_reader_test.cpp",
                  "tests/gameplay_attribution_test.py", "tests/gameplay_raw_test.py",
                  "tests/check-timing-audio-settings.py", "docs/timing-audio-controls.md",
+                 "tests/gameplay_operator_test.py", "tests/gameplay_operator_adapter_test.py",
+                 "tests/gameplay_operator_bootstrap_test.cpp", "tools/gameplay-operator-bootstrap/gate.h",
+                 "tools/gameplay_operator.py", "tools/gameplay_operator_package.py",
+                 "tools/gameplay_operator_adapter.py", "tools/gameplay_operator_bootstrap.py",
+                 "tools/gameplay_operator_route.py",
                  "tools/gameplay-raw-reader/witness.cpp", "tools/gameplay_attribution.py",
                  "tools/gameplay_budget.py", "tools/gameplay_collector.py", "tools/gameplay_raw.py",
                  "tools/gameplay_record.py", "tools/gameplay_process.py", "tools/verification_process.py",
@@ -139,11 +144,22 @@ def main():
             15, unittest=True)
         run("raw-contract", [sys.executable, "-I", "-B", ROOT / "tests/gameplay_raw_test.py"],
             15, unittest=True)
-        run("metadata", [sys.executable, "-I", "-B", ROOT / "tests/check-timing-audio-settings.py"],
-            15, ["PASS:", "settings plus raw analyzer controls match source and tracked reference"])
-        record.update(complete=True, result="PASS", checks=5)
+        bootstrap = output / "bootstrap-predicates.exe"
+        run("bootstrap-compile", [cl, "/nologo", "/W4", "/WX", "/std:c++17", "/EHsc", "/MT", "/O2",
+                                  "/UNDEBUG", ROOT / "tests/gameplay_operator_bootstrap_test.cpp",
+                                  "/Fo:" + str(output / "bootstrap-predicates.obj"), "/Fe:" + str(bootstrap)], 60)
+        record["bootstrap_predicates_sha256"] = sha(bootstrap)
         save()
-        print("COMPLETE gameplay offline failures=0 checks=5 receipt=" + str(receipt), flush=True)
+        run("bootstrap", [bootstrap], 15, ["COMPLETE gameplay operator native bootstrap predicates cases=9"])
+        run("operator", [sys.executable, "-I", "-B", ROOT / "tests/gameplay_operator_test.py"],
+            15, unittest=True)
+        run("operator-adapter", [sys.executable, "-I", "-B", ROOT / "tests/gameplay_operator_adapter_test.py"],
+            15, unittest=True)
+        run("metadata", [sys.executable, "-I", "-B", ROOT / "tests/check-timing-audio-settings.py"],
+            15, ["PASS:", "COMPLETE timing settings inventory"])
+        record.update(complete=True, result="PASS", checks=8)
+        save()
+        print("COMPLETE gameplay offline failures=0 checks=8 receipt=" + str(receipt), flush=True)
         return 0
     except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as error:
         record.update(complete=True, result="FAIL", error=str(error))
