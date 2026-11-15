@@ -294,9 +294,49 @@ def main():
     parser.add_argument("--case", choices=[CASE], help="Run only the named historical/current case, after common preflight")
     parser.add_argument("--capture", help="Replay an exported timing capture from this exact clean source revision")
     parser.add_argument("--performance", help="Analyze an exported performance.csv and produce a timeline")
+    parser.add_argument("--gameplay", help="Analyze a released gameplay ETL and QPC bundle")
+    parser.add_argument("--gameplay-reader", help="Built gameplay reader DLL")
+    parser.add_argument("--gameplay-raw-reader", help="Built native raw ETW gameplay reader EXE")
+    from gameplay_raw import (RAW_LOOKAROUND_HELP, RAW_LOOKAROUND_OPTION, RAW_WINDOW_DEFAULT,
+                              RAW_PAIR_HELP, RAW_PAIR_OPTION, RAW_WINDOW_HELP, RAW_WINDOW_MODES, RAW_WINDOW_OPTION)
+    parser.add_argument(RAW_WINDOW_OPTION, choices=RAW_WINDOW_MODES,
+                        help=f"{RAW_WINDOW_HELP} The default is {RAW_WINDOW_DEFAULT}.")
+    parser.add_argument(RAW_LOOKAROUND_OPTION, type=int, help=RAW_LOOKAROUND_HELP)
+    parser.add_argument(RAW_PAIR_OPTION, help=RAW_PAIR_HELP)
+    parser.add_argument("--gameplay-raw-grant", help="Exact one-shot offline raw analysis grant JSON")
+    parser.add_argument("--describe-gameplay-raw-grant", action="store_true",
+                        help="Print the raw grant fields without starting the reader")
+    parser.add_argument("--dotnet", help="Explicit .NET host for gameplay analysis")
+    parser.add_argument("--output", help="New gameplay report directory")
     parser.add_argument("--compile-timeout", type=positive, default=60)
     parser.add_argument("--test-timeout", type=positive, default=15)
     args = parser.parse_args()
+    if (not (args.gameplay and args.gameplay_raw_reader)
+            and (args.gameplay_raw_window is not None or args.gameplay_raw_lookaround_ms is not None
+                 or args.gameplay_raw_reader_pair is not None)):
+        parser.error("Raw reader options require --gameplay and --gameplay-raw-reader")
+    if args.gameplay:
+        if args.performance or args.capture or args.case or args.profile != "timing" or not args.output:
+            parser.error("--gameplay requires --output and is a separate run")
+        if args.gameplay_raw_reader:
+            if (args.gameplay_reader or args.dotnet
+                    or bool(args.gameplay_raw_grant) == args.describe_gameplay_raw_grant):
+                parser.error("Choose only the raw reader and either its grant or --describe-gameplay-raw-grant")
+        elif not (args.gameplay_reader and args.dotnet) or args.gameplay_raw_grant or args.describe_gameplay_raw_grant:
+            parser.error("--gameplay requires a raw reader with its grant or --gameplay-reader and --dotnet")
+        from gameplay_attribution import analyze as analyze_gameplay
+        options = dict(mode=args.gameplay_raw_window,
+                       lookaround_ms=args.gameplay_raw_lookaround_ms, pair_manifest=args.gameplay_raw_reader_pair)
+        try:
+            if args.describe_gameplay_raw_grant:
+                from gameplay_raw import describe
+                print(json.dumps(describe(args.gameplay, args.gameplay_raw_reader, args.output, **options), indent=2))
+                return 0
+            return analyze_gameplay(args.gameplay, args.gameplay_raw_reader or args.gameplay_reader,
+                                    args.dotnet, args.output, raw_grant=args.gameplay_raw_grant, raw_options=options)
+        except (OSError, ValueError, TypeError, KeyError, OverflowError) as error:
+            print("FAIL " + str(error), flush=True)
+            return 1
     if args.performance:
         if args.capture or args.case or args.profile != "timing":
             parser.error("--performance is separate from timing verification and replay")

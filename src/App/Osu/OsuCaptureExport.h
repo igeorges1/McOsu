@@ -16,9 +16,11 @@ public:
 		bool postClosed = false;
 		const char *postEnd = "target";
 		OsuPerformanceHistory::Window performance;
+		OsuGameplayCapture::Mark gameplay;
 		double mark = 0, snapshotMS = 0, readbackMS = -1, frame = -1, frameEngine = -1;
 		unsigned long long epoch = 0;
 		unsigned width = 0, height = 0;
+		unsigned folderLimit = 12;
 		std::vector<unsigned char> pixels;
 		std::string screenshot; // Empty means disabled; pending never reaches the worker.
 	};
@@ -27,6 +29,7 @@ public:
 		std::string directory, error;
 		bool timing = false, performance = false, screenshot = false;
 		bool timingPartial = false;
+		bool gameplay = false, gameplayPartial = false;
 	};
 
 	OsuCaptureExport() = default;

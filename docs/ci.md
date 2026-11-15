@@ -62,3 +62,36 @@ Local preparation is not hosted success or independent acceptance. The publisher
 must inspect actual workflow results after pushing; no hosted result exists
 merely because YAML and the same commands passed locally. Runtime updater tests
 belong to their independent tooling branch, not a duplicate product in this stack.
+
+## Gameplay offline job
+
+The additive `gameplay-verification.yml` job keeps the timing helper job intact.
+It runs on Windows 2022 with the same pinned Python action and exact GCC8.1
+archive. The hosted image supplies x64 MSVC and the Windows SDK through its
+Visual Studio developer environment. Compiler paths and executable hashes are
+recorded per run; this is not a claim that MSVC image contents are immutable.
+
+`.github/scripts/gameplay_smoke.py` compiles and executes the actual App raw-frame
+helper and native reader predicate fixture. The latter covers the existing
+shape, strict typed V4 and uninterpreted-boundary cases, plus actual synthetic
+JSON emission and declared loss/lifecycle/overflow/sticky-failure refusals.
+It also runs the gameplay attribution and raw-contract Python suites and the
+generated settings/reference inventory. Native refusal exit 3 is expected only
+for the named synthetic negative cases, with withheld Events and explicit flags.
+No trace is opened by those fixture modes.
+
+Each compiler has a 60-second bound; each helper or Python suite has a 15-second
+bound. Every child uses an owned Job, 1 GiB memory and a shared 1 MiB stdout/stderr
+allowance. Actual PID, executable hash, exit, timeout, stream and completion checks
+are retained before interpreting the result. The entire smoke command has a
+240-second external bound. Source/tree, input hashes and individual unittest
+counts are recorded; any unexpected failure stops the remaining checks.
+Readable `.ci-runs` evidence uploads on success or failure for 14 days.
+
+This job does not build or start the game, use private route015, query tokens,
+request UAC, start or stop ETW, inspect devices, play a sound, open a real ETL or
+deploy a package. SDK/.NET reader predicates retain their separate local evidence;
+this job does not restore or build that alternative reader. Offline CI success
+does not qualify operator installation, live recording, physical latency,
+representative overhead or a player's stutter cause. Actual hosted execution
+must be observed at the published commit before reporting it as passed.

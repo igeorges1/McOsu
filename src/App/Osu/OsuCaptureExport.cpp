@@ -14,6 +14,51 @@
 #include <process.h>
 #endif
 
+bool OsuGameplayCapture::supported()
+{
+#ifdef _WIN32
+	return true;
+#else
+	return false;
+#endif
+}
+
+OsuGameplayCapture::Identity OsuGameplayCapture::identify()
+{
+	Identity result;
+#ifdef _WIN32
+	FILETIME creation, exit, kernel, user;
+	LARGE_INTEGER frequency;
+	if (GetProcessTimes(GetCurrentProcess(), &creation, &exit, &kernel, &user)
+		&& QueryPerformanceFrequency(&frequency))
+	{
+		result.creation = (std::uint64_t(creation.dwHighDateTime) << 32) | creation.dwLowDateTime;
+		result.frequency = frequency.QuadPart;
+		result.pid = GetCurrentProcessId();
+		result.tid = GetCurrentThreadId();
+	}
+#endif
+	return result;
+}
+
+unsigned OsuGameplayCapture::thread()
+{
+#ifdef _WIN32
+	return GetCurrentThreadId();
+#else
+	return 0;
+#endif
+}
+
+std::int64_t OsuGameplayCapture::ticks()
+{
+#ifdef _WIN32
+	LARGE_INTEGER value;
+	if (QueryPerformanceCounter(&value) && value.QuadPart >= 0) return value.QuadPart;
+#endif
+	return -1;
+}
+
 namespace
 {
 	using Clock = std::chrono::steady_clock;
@@ -23,7 +68,7 @@ namespace
 	}
 
 #ifdef _WIN32
-	std::string reserveDirectory()
+	std::string reserveDirectory(unsigned limit)
 	{
 		const char *root = "timing-captures";
 		if (!CreateDirectoryA(root, nullptr) && GetLastError() != ERROR_ALREADY_EXISTS) return {};
@@ -40,13 +85,13 @@ namespace
 				const std::string name = entry.cFileName;
 				if ((entry.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) && name != "." && name != "..") ++count;
 			}
-			while (count < 12 && FindNextFileA(search, &entry));
-			const DWORD error = count < 12 ? GetLastError() : ERROR_SUCCESS;
+			while (count < limit && FindNextFileA(search, &entry));
+			const DWORD error = count < limit ? GetLastError() : ERROR_SUCCESS;
 			FindClose(search);
 			if (error != ERROR_SUCCESS && error != ERROR_NO_MORE_FILES) return {};
 		}
 		else if (GetLastError() != ERROR_FILE_NOT_FOUND) return {};
-		if (count >= 12) return {};
+		if (count >= limit) return {};
 		const auto stamp = static_cast<long long>(std::time(nullptr));
 		for (int suffix = 0; suffix < 12; ++suffix)
 		{
@@ -69,10 +114,59 @@ namespace
 		return written && output && MoveFileA(temporary.c_str(), final.c_str());
 	}
 
+	bool saveGameplay(const OsuCaptureExport::Job &job, std::ostream &out, bool &partial)
+	{
+		const auto &mark = job.gameplay;
+		const auto &window = job.performance;
+		const auto &rows = window.rawFrames;
+		const auto boundary = std::find_if(rows.begin(), rows.end(), [&](const OsuPerformanceHistory::Frame &row) {
+			return row.sequence == window.rawBoundary;
+		});
+		const auto count = std::min(rows.size(), static_cast<std::size_t>(
+			mark.config.valid() ? mark.config.rowLimit : OsuGameplayCapture::MAX_ROWS));
+		std::size_t begin = rows.size() - count;
+		if (boundary != rows.end()) begin = std::min(begin, static_cast<std::size_t>(boundary - rows.begin()));
+		partial = !window.rawBoundary || window.rawPostCount < window.postTarget || count != rows.size();
+		out.imbue(std::locale::classic());
+		out << "MCOSU_GAMEPLAY_QPC 1\nsource " << job.source << "\nmap " << job.map
+			<< "\nidentity " << mark.identity.pid << ' ' << mark.identity.creation << ' ' << mark.identity.tid
+			<< ' ' << mark.identity.frequency << "\nmark " << mark.id << ' ' << mark.epoch << ' ' << mark.tick
+			<< ' ' << window.rawBoundary << "\nsettings " << mark.config.requested << ' ' << mark.config.update
+			<< ' ' << mark.config.draws << ' ' << mark.config.stages << ' ' << mark.config.drawLimit << ' '
+			<< mark.config.rowLimit << ' ' << mark.historyRequested << ' ' << mark.history << ' '
+			<< mark.tailRequested << ' ' << mark.tail << ' ' << mark.tailMilliseconds << ' ' << job.folderLimit
+			<< ' ' << mark.screenshot << ' ' << mark.model
+			<< "\nstatus " << mark.status << "\npost_end " << job.postEnd
+			<< "\ncounts " << rows.size() << ' ' << count << ' ' << window.evicted << ' ' << window.rawPostCount
+			<< "\nstages " << mark.snapshotEnd << ' ' << mark.readback.start << ' ' << mark.readback.end << '\n';
+		for (std::size_t i = begin; i < begin + count; ++i)
+		{
+			const auto &row = rows[i];
+			const auto &raw = row.raw;
+			out << "frame " << row.sequence << ' ' << raw.epoch << ' ' << raw.update.start << ' ' << raw.next
+				<< ' ' << raw.update.end << ' ' << row.draws << ' ' << raw.observed << ' ' << row.context;
+			for (const auto &span : raw.draws) out << ' ' << span.start << ' ' << span.end;
+			out << '\n';
+			auto phaseEnd = mark.config.update ? raw.update.end : raw.update.start;
+			for (unsigned draw = 0; mark.config.draws && draw < std::min(raw.observed, static_cast<unsigned>(mark.config.drawLimit)); ++draw)
+			{
+				const auto &span = raw.draws[draw];
+				partial = partial || span.start < phaseEnd || span.start < raw.update.start
+					|| span.end < span.start || span.end > raw.next;
+				phaseEnd = span.end;
+			}
+			partial = partial || raw.next <= raw.update.start
+				|| (mark.config.update && (raw.update.end < raw.update.start || raw.update.end > raw.next))
+				|| (mark.config.draws && (raw.observed != row.draws || raw.observed > static_cast<unsigned>(mark.config.drawLimit)));
+		}
+		out << "end " << (partial ? "partial" : "complete") << '\n';
+		return out.good();
+	}
+
 	void save(const OsuCaptureExport::Job &job, OsuCaptureExport::Result &result)
 	{
 		const auto reserveStart = Clock::now();
-		result.directory = reserveDirectory();
+		result.directory = reserveDirectory(job.folderLimit);
 		const double reserveMS = ms(reserveStart);
 		if (result.directory.empty())
 		{
@@ -145,6 +239,10 @@ namespace
 			});
 			perfMS = ms(start);
 		}
+		if (job.gameplay.config.requested)
+			result.gameplay = publish(directory, "gameplay.qpc", [&](std::ostream &out) {
+				return saveGameplay(job, out, result.gameplayPartial);
+			});
 		const bool receipt = publish(directory, "export.txt", [&](std::ostream &out) {
 			out.imbue(std::locale::classic());
 			out << std::setprecision(17) << "mark_real_seconds=" << job.mark << "\nsnapshot_main_ms=" << job.snapshotMS
@@ -154,11 +252,12 @@ namespace
 				<< "\nperformance_format_and_write_worker_ms=" << perfMS
 				<< "\ntiming=" << (!job.hasTiming ? "disabled" : !result.timing ? "failed" : job.timingComplete ? "saved" : "partial")
 				<< "\nperformance=" << (!job.hasPerformance ? "disabled" : result.performance ? "saved" : "failed")
+				<< "\ngameplay_qpc=" << (!job.gameplay.config.requested ? "disabled" : !result.gameplay ? "failed" : result.gameplayPartial ? "partial" : "saved")
 				<< "\nscreenshot=" << (job.screenshot.empty() ? "disabled" : result.screenshot ? "saved" : "unavailable") << '\n';
 			return out.good();
 		});
 		if (!receipt || (job.hasTiming && !result.timing) || (job.hasPerformance && !result.performance)
-			|| (!job.screenshot.empty() && !result.screenshot))
+			|| (!job.screenshot.empty() && !result.screenshot) || (job.gameplay.config.requested && !result.gameplay))
 			result.error = "One or more capture components could not be saved.";
 	}
 #endif

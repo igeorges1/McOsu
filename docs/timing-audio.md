@@ -80,3 +80,39 @@ an Options save to discard unrelated earlier commands. See the precise
 [known limitation and disposable reproduction](validation/known-limitations.md).
 It was reproduced previously; publication inspected the current guard but did
 not perform a new native save/reload test or fix the product.
+
+## Gameplay scheduler attribution
+
+The [gameplay attribution guide](gameplay-attribution.md) describes the
+Windows-only opt-in raw QPC companion to [performance capture](performance-capture.md).
+App update anchors close half-open cadence spans. Optional update, draw and Mark
+stages share those raw ticks and a process/thread/capture identity. The existing
+bounded ring and export worker publish a separate integer sidecar. The collector
+uses a separate validated budget. After consent and setup, a fresh saved
+focused gameplay Mark signals bounded readiness before watchdog arm or trace
+Start. A later Mark must fall inside the actual active-QPC/Stop-request window.
+Occupied trace bytes and a short rolling forecast share the early threshold.
+The observer reports stop cause and elapsed time and release is verified
+independently for collector-owned processes. A player game that the run
+did not start can remain open. The offline verifier offers an explicit SDK reader and an
+explicit raw classic ETW reader. The raw route uses an exact offline grant
+and a seal that binds the original held-handle collector samples, producer
+and release evidence to the App and trace. The last successful poll
+corroborates coverage through the preceding sample. The verifier reports
+Running, Ready, Waiting and Unknown. The raw route reports marked-frame
+coverage separately from the full retained history. The scheduler window
+can be the whole trusted collection or the retained App span plus bounded
+context. Global lifecycle, clock and loss checks still apply. Equal-QPC
+groups leave Unknown gaps. The reviewed versioned reader pair also preserves
+strictly validated same-target records as uninterpreted boundaries.
+Classification resumes at later independently supported intervals. A manual
+controlled rehearsal qualified the producer, independent normal release, seal
+and versioned paired whole-window marked analysis. Its marked frame was complete
+while 23 history frames remained partial. This is known-fixture evidence, not
+general player, automatic-launch or overhead qualification. The collector still
+requires the separately reviewed private Windows route; the public checkout is
+not a self-contained operator capture package. See the
+[publication validation boundary](validation/gameplay-attribution.md).
+Legacy clocks, input, renderer/GPU execution
+and audio profiles remain outside this join. App settings and budget controls
+are in the [generated control reference](timing-audio-controls.md).

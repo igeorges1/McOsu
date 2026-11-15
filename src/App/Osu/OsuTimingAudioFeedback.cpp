@@ -62,6 +62,14 @@ ConVar osu_timing_capture_mark_key("osu_timing_capture_mark_key", 0, FCVAR_NONE)
 ConVar osu_timing_capture_performance("osu_timing_capture_performance", false, FCVAR_NONE);
 ConVar osu_timing_capture_frame_history("osu_timing_capture_frame_history", 1024, FCVAR_NONE);
 ConVar osu_timing_capture_frame_tail("osu_timing_capture_frame_tail", 30, FCVAR_NONE);
+ConVar osu_timing_capture_qpc("osu_timing_capture_qpc", false, FCVAR_NONE);
+ConVar osu_timing_capture_qpc_update("osu_timing_capture_qpc_update", true, FCVAR_NONE);
+ConVar osu_timing_capture_qpc_draws("osu_timing_capture_qpc_draws", true, FCVAR_NONE);
+ConVar osu_timing_capture_qpc_stages("osu_timing_capture_qpc_stages", true, FCVAR_NONE);
+ConVar osu_timing_capture_qpc_draw_limit("osu_timing_capture_qpc_draw_limit", 4, FCVAR_NONE);
+ConVar osu_timing_capture_qpc_row_limit("osu_timing_capture_qpc_row_limit", 4217, FCVAR_NONE);
+ConVar osu_timing_capture_tail_ms("osu_timing_capture_tail_ms", 2000, FCVAR_NONE);
+ConVar osu_timing_capture_report_limit("osu_timing_capture_report_limit", 12, FCVAR_NONE);
 
 static double timingAudioValue(float value, double fallback, double minimum, double maximum)
 {

@@ -118,6 +118,7 @@ public:
 
 	void saveScreenshot();
 	void markTimingCapture();
+	const char *gameplayCaptureStatus() const { return m_gameplayStatus; }
 
 	void setSkin(UString skin) {onSkinChange("", skin);}
 	void reloadSkin() {onSkinReload();}
@@ -212,9 +213,18 @@ public:
 
 private:
 	void finishTimingCaptureScreenshot(Graphics *g);
-	void updateCapturedPerformance(double now);
+	void updateCapturedPerformance(double now, std::int64_t raw);
+	std::int64_t gameplayCaptureTick() const;
 	void submitTimingCapture();
 	OsuPerformanceHistory m_performanceHistory;
+	OsuGameplayCapture::Identity m_gameplayIdentity;
+	OsuGameplayCapture::Config m_gameplayConfig;
+	const OsuBeatmap *m_gameplayMap = nullptr;
+	std::uint64_t m_gameplayMapEpoch = 0, m_gameplayEpoch = 0, m_gameplayMark = 0;
+	std::int64_t m_gameplayLast = -1;
+	double m_gameplayLastRelative = -1;
+	const char *m_gameplayStatus = "not initialized";
+	bool m_gameplayActive = false;
 	OsuCaptureExport m_captureExport;
 	std::unique_ptr<OsuCaptureExport::Job> m_pendingTimingCapture;
 	const OsuBeatmap *m_captureMarkMap = nullptr;

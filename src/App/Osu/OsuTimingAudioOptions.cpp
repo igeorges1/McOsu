@@ -48,6 +48,7 @@ void OsuOptionsMenu::addTimingAudioOptions()
 	for (const auto &control : OsuTimingAudioHudControls::controls())
 	{
 		if (control.group != OsuTimingAudioHudControls::CAPTURE) continue;
+		if (std::string(control.name) == "osu_timing_capture_qpc") addSubSection("Advanced Gameplay Attribution");
 		auto *var = convar->getConVarByName(control.name);
 		if (control.kind == OsuTimingAudioHudControls::CaptureKey) addKeyBindButton(control.label, var);
 		else if (control.kind == OsuTimingAudioHudControls::Integer)
@@ -275,6 +276,7 @@ void OsuOptionsMenu::onCopyTimingAudioSetup()
 		text += std::string(name) + " = " + convar->getConVarByName(name)->getString().toUtf8() + "\n";
 	};
 	for (const auto &control : OsuTimingAudioHudControls::controls()) appendSetting(control.name);
+	text += std::string("Raw QPC capture status ") + m_osu->gameplayCaptureStatus() + "\n";
 	for (const char *name : {"osu_draw_hud", "osu_hud_scale", "osu_hud_shift_tab_toggles_everything",
 		"osu_volume_master", "osu_volume_master_inactive"}) appendSetting(name);
 	env->setClipBoardText(text.c_str());
