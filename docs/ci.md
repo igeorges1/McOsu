@@ -80,6 +80,15 @@ generated settings/reference inventory. Native refusal exit 3 is expected only
 for the named synthetic negative cases, with withheld Events and explicit flags.
 No trace is opened by those fixture modes.
 
+The operator layer adds the actual eleven-case policy and six-case package/adapter
+Python suites, plus the nine-case native bootstrap predicate fixture. Its loader
+callback is inert; filesystem authority, token/handle observations and channel
+peers are injected test data. This covers rejected status invalidation, marked
+versus global partial status, fixed package roles and owned-release contracts.
+The native predicate is not a Windows loader implementation or an ACL probe.
+The expanded smoke records sixteen children in eight groups, including compilation.
+The settings check uses its stable completion marker after reference assertions.
+
 Each compiler has a 60-second bound; each helper or Python suite has a 15-second
 bound. Every child uses an owned Job, 1 GiB memory and a shared 1 MiB stdout/stderr
 allowance. Actual PID, executable hash, exit, timeout, stream and completion checks

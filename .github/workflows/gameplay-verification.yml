@@ -23,10 +23,10 @@ jobs:
           python-version: '3.13'
       - name: Provision exact GCC8.1 i686 Win32 DWARF2
         run: python .github/scripts/provision_mingw.py --out "$env:RUNNER_TEMP/mcosu-gameplay-gcc8"
-      - name: Offline App helper, raw native predicates, policies and metadata
+      - name: Offline App helper, raw and operator predicates, policies and metadata
         run: >-
           python .github/scripts/run_guarded.py --label gameplay-offline --timeout 240
-          --contains "COMPLETE gameplay offline failures=0 checks=5"
+          --contains "COMPLETE gameplay offline failures=0 checks=8"
           -- cmd.exe /d /c .github\scripts\gameplay_smoke.cmd
       - name: Retain readable success and failure evidence
         if: always()

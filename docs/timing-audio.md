@@ -105,13 +105,27 @@ can be the whole trusted collection or the retained App span plus bounded
 context. Global lifecycle, clock and loss checks still apply. Equal-QPC
 groups leave Unknown gaps. The reviewed versioned reader pair also preserves
 strictly validated same-target records as uninterpreted boundaries.
-Classification resumes at later independently supported intervals. A manual
-controlled rehearsal qualified the producer, independent normal release, seal
-and versioned paired whole-window marked analysis. Its marked frame was complete
-while 23 history frames remained partial. This is known-fixture evidence, not
-general player, automatic-launch or overhead qualification. The collector still
-requires the separately reviewed private Windows route; the public checkout is
-not a self-contained operator capture package. See the
+Classification resumes at later independently supported intervals. A
+controlled fixture with manual launch qualified the producer, independent
+release, seal and supported whole-window paired analysis at tools
+`be9da43d`. The marked frame was complete while 23 history frames were
+partial. The result applies to that fixture and its original App
+identity. The normal App919 package remains a separate diagnostic build.
+
+The [operator interface](gameplay-attribution.md#source-only-operator-tools)
+adds local capture preferences, source-only Start refusal and read-only
+archive viewing. Its policy requires explicit session intent, original
+process and thread identities, a fresh saved readiness Mark, an owned
+sample before the once-only ACTIVE cue, and independent release before
+analysis admission. An operator proof version is separate from the
+reader wire version. A complete Mark can coexist with Unknown history.
+The offline assembler checks fixed entry files, dependency and license
+closure, and observed import and DLL identities before the injected
+bootstrap boundary. The owned channel binds phases, Stop and release
+to original process objects. The normal reader reserves its local
+output separately from the protected capture directory.
+Protected installation, native collection, playback and actual player
+use remain to be qualified. See the public
 [publication validation boundary](validation/gameplay-attribution.md).
 Legacy clocks, input, renderer/GPU execution
 and audio profiles remain outside this join. App settings and budget controls

@@ -195,3 +195,24 @@ the [raw reader build flags](gameplay-attribution.md#raw-classic-etw-reader)
 in place of the reader source and run the resulting test executable.
 These checks use inert metadata and event fixtures. Actual ETL coverage
 and producer qualification are recorded separately.
+
+Run `python tests/gameplay_operator_test.py` for the source-only
+operator interfaces. They exercise an inert protected package
+observation, original-handle and phase admission, real temporary Mark
+files, one-shot notification bounds, independent release and operator
+proof version 2. They also drive the metadata console's settings,
+archive read and unavailable Start. The checks refuse native and child
+entry and trace payload reads. They can run from a clean checkout
+without the protected Windows collector package. These checks do not
+qualify the Windows installation, token/consent route, live cleanup,
+playback or representative overhead.
+
+Run `python tests/gameplay_operator_adapter_test.py` for the offline
+assembler and the actual adapter call gates. These checks use inert
+package bytes, protected-object observations and original peer
+observations. Compile `tests/gameplay_operator_bootstrap_test.cpp`
+for the Windows x64 C++17 Release predicate check. Its load port is
+an inert callback. Neither test invokes the actual installer,
+interpreter bootstrap, process/token/pipe/ACL APIs, UAC, ETW or audio.
+The runtime distribution build and installed adapter require separate
+qualification.

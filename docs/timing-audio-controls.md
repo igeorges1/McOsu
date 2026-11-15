@@ -240,3 +240,14 @@ These offline options are bound by the analysis grant and leave the recorded bud
 | `--gameplay-raw-window` | `whole` | `whole`, `retained` | Choose the whole trusted window or the retained App span plus context. |
 | `--gameplay-raw-lookaround-ms` | 500 ms in retained mode | 0–5000 ms | Context on each side of the retained App span in ms (0–5000, default 500 in retained mode). |
 | `--gameplay-raw-reader-pair` | Omitted | Reviewed manifest path | Select a reviewed versioned raw reader-pair manifest. Omit for legacy I/O/R. |
+
+## Gameplay operator preferences
+
+These preferences are local to the operator tools. Save them in `operator-preferences.json` with the `settings --save` command.
+The settings command shows requested and effective values. A capture attempt pins both, along with the existing gameplay Budget.
+Active cue depends on an authenticated RECORDING phase and a qualified protected capture installation. The source-only command is unavailable for capture.
+
+| Key | Option | Default | Unit | Accepted domain | Effect |
+| --- | --- | --- | --- | --- | --- |
+| `active_cue` | `--active-cue` | `soft` | preset | soft, clear, off | Play one cue after authenticated RECORDING. Off leaves visible status. |
+| `baseline_wait_ms` | `--baseline-wait-ms` | `45000` | ms | 1000–120000 | Time from Start to bind a fresh saved baseline Mark. |
