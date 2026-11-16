@@ -55,6 +55,8 @@ def main():
                  "tools/gameplay_operator.py", "tools/gameplay_operator_package.py",
                  "tools/gameplay_operator_adapter.py", "tools/gameplay_operator_bootstrap.py",
                  "tools/gameplay_operator_route.py",
+                 "tests/gameplay_operator_runtime_test.py", "tools/gameplay_operator_runtime.py",
+                 "tools/gameplay_mark_inventory.py", "tools/gameplay-operator-bootstrap/runtime_policy.h",
                  "tools/gameplay-raw-reader/witness.cpp", "tools/gameplay_attribution.py",
                  "tools/gameplay_budget.py", "tools/gameplay_collector.py", "tools/gameplay_raw.py",
                  "tools/gameplay_record.py", "tools/gameplay_process.py", "tools/verification_process.py",
@@ -63,6 +65,8 @@ def main():
         paths += [str(p.relative_to(ROOT)).replace("\\", "/")
                   for p in (ROOT / "src/App/Osu").glob("OsuGameplay*.h")]
         paths += ["src/App/Osu/OsuPerformanceHistory.h"]
+        paths += [str(p.relative_to(ROOT)).replace("\\", "/")
+                  for p in (ROOT / "tools/gameplay-operator-notices").iterdir() if p.is_file()]
         record["inputs"] = {p: sha(ROOT / p) for p in sorted(set(paths))}
         record["compilers"] = {str(p): sha(p) for p in (gcc, cl)}
         save()
@@ -150,16 +154,18 @@ def main():
                                   "/Fo:" + str(output / "bootstrap-predicates.obj"), "/Fe:" + str(bootstrap)], 60)
         record["bootstrap_predicates_sha256"] = sha(bootstrap)
         save()
-        run("bootstrap", [bootstrap], 15, ["COMPLETE gameplay operator native bootstrap predicates cases=9"])
+        run("bootstrap", [bootstrap], 15, ["COMPLETE gameplay operator native bootstrap predicates cases=24"])
         run("operator", [sys.executable, "-I", "-B", ROOT / "tests/gameplay_operator_test.py"],
             15, unittest=True)
         run("operator-adapter", [sys.executable, "-I", "-B", ROOT / "tests/gameplay_operator_adapter_test.py"],
             15, unittest=True)
+        run("operator-runtime", [sys.executable, "-I", "-B", ROOT / "tests/gameplay_operator_runtime_test.py"],
+            15, unittest=True)
         run("metadata", [sys.executable, "-I", "-B", ROOT / "tests/check-timing-audio-settings.py"],
             15, ["PASS:", "COMPLETE timing settings inventory"])
-        record.update(complete=True, result="PASS", checks=8)
+        record.update(complete=True, result="PASS", checks=9)
         save()
-        print("COMPLETE gameplay offline failures=0 checks=8 receipt=" + str(receipt), flush=True)
+        print("COMPLETE gameplay offline failures=0 checks=9 receipt=" + str(receipt), flush=True)
         return 0
     except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as error:
         record.update(complete=True, result="FAIL", error=str(error))

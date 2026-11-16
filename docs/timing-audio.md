@@ -126,7 +126,45 @@ to original process objects. The normal reader reserves its local
 output separately from the protected capture directory.
 Protected installation, native collection, playback and actual player
 use remain to be qualified. See the public
-[publication validation boundary](validation/gameplay-attribution.md).
+[publication validation boundary](validation/gameplay-attribution.md). The selected GUI runtime has passed staged normal
+startup and redirected-output compatibility for Settings and Start refusal.
+Version 1 package fixtures and the existing lab reader pair retain their own
+identities. Protected startup still depends on independent approval and
+pre-interpreter observations of installed files, import resolution and DLL
+resolution. See the [gameplay attribution guide](gameplay-attribution.md#source-only-operator-tools).
+
+<!-- operator-runtime:begin -->
+
+### Proposed protected operator runtime
+
+The draft selects CPython 3.14.10 AMD64 Windows embeddable (`cpython-3.14.10-amd64-embed`) for package manifest version 2.
+Each entry uses `-I` `-B` `-S` before the fixed script.
+`python/python314._pth` contains these lines in order and ends with a newline.
+
+- `python314.zip`
+- `.`
+- `../tools`
+- `../route`
+
+| Context | Entry | Runtime image |
+| --- | --- | --- |
+| Visible normal console | `tools/gameplay_operator.py` | `python/python.exe` |
+| Elevated supervisor | `tools/operator_supervisor.py` | `python/pythonw.exe` |
+| Elevated controller | `tools/operator_controller.py` | `python/pythonw.exe` |
+| Elevated watchdog | `tools/operator_watchdog.py` | `python/pythonw.exe` |
+| Normal background cue worker | `tools/operator_cue_worker.py` | `python/pythonw.exe` |
+
+The version 2 package pins these notice files and binds each runtime member to its notice group.
+
+- `route/licenses/cpython-upstream-license.txt`
+- `route/licenses/cpython-incorporated-licenses.txt`
+- `route/licenses/supplemental-notices.txt`
+- `route/licenses/runtime-changes.txt`
+
+The reviewed notice set covers selected runtime evidence. Redistribution applicability, signer trust and native loader qualification remain separate.
+
+<!-- operator-runtime:end -->
+
 Legacy clocks, input, renderer/GPU execution
 and audio profiles remain outside this join. App settings and budget controls
 are in the [generated control reference](timing-audio-controls.md).

@@ -1,0 +1,38 @@
+Selected CPython 3.14.10 AMD64 runtime changes for the gameplay operator
+
+The runtime input is the Python Software Foundation Windows embeddable archive
+python-3.14.10-embed-amd64.zip, SHA-256
+90905e64a840557d8c1bc4f5b74db3d7ee85e3ffb217611cac1c7813acea4159.
+The selected .exe, .dll, .pyd and stdlib ZIP members retain their archive bytes.
+python.exe is the visible console entry. The vendor's pythonw.exe serves the
+background role. Optional members outside the selected inventory are omitted.
+The selected file names and exact package pins live in gameplay_operator_runtime.py.
+
+The upstream python314._pth file (80 bytes, SHA-256
+2ed7ccda80e9e28ab5877902a9a325586c8a7b7b3e6731d944565bee082e216c) is
+replaced by the project's 34-byte path policy. Its exact lines are:
+
+python314.zip
+.
+../tools
+../route
+
+The policy has a final LF and omits the import-site directive. The modified
+file's SHA-256 is
+7022e7c5df5c16284d6b171af55997efcefc8c1ff21ee97bd83744234a6b3fd0.
+Files under tools and route and the package manifest are separate from the
+upstream embeddable archive.
+
+The original archive LICENSE is preserved in cpython-upstream-license.txt.
+cpython-incorporated-licenses.txt preserves the complete Doc/license.rst at
+CPython v3.14.10 (source commit b703b2c5e704341d61e367b9b940b77ed11dded0).
+supplemental-notices.txt retains HACL algorithm and support attributions and
+terms, the zlib-ng 2.2.4 notice and the ctypes macholib README. The package
+places these files with this changes record under route/licenses.
+
+The reviewed notice collection covers the selected evidence. Redistribution
+conditions still require applicability review. Archive digests and these
+source references do not establish signer trust, reproducible source-to-binary
+correspondence or complete native import/DLL resolution. The staged GUI runtime
+passed its bounded normal-only compatibility check. Protected installation,
+bootstrap and capture qualification remain pending. Public Start is unavailable.

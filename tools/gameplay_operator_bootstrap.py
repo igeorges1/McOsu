@@ -8,10 +8,11 @@ import re
 import stat
 import sys
 
+import gameplay_operator_runtime as runtime
 from gameplay_budget import MIB
-from gameplay_operator_package import (GIT_ID, PACKAGE_LIMIT, ROOT_ROLES, canonical, digest, exact_keys,
-                                       fields_from_json, is_sha, member_path, validate_graph, validate_package,
-                                       validate_pair)
+from gameplay_operator_package import (GIT_ID, PACKAGE_LIMIT, ROOT_ROLES, RUNTIME_ROOT_ROLES, canonical,
+                                       digest, exact_keys, fields_from_json, is_sha, member_path, package_runtime,
+                                       payload_member, validate_graph, validate_package, validate_pair, validate_runtime_members)
 
 CLOSURE = "route/runtime-closure.json"
 REQUIRED_RUNTIME = {"python/python313.dll", "python/python313.zip", "python/python313._pth"}
@@ -50,19 +51,7 @@ def read_data(path, limit):
     return raw
 
 
-def payload_member(name):
-    if not member_path(name):
-        return False
-    path = Path(name)
-    if path.suffix == ".exe":
-        return name in ROOT_ROLES.values()
-    if path.suffix in {".dll", ".pyd", ".zip", "._pth"}:
-        return name.startswith("python/")
-    return path.suffix in {".py", ".cpp", ".h", ".json", ".txt", ".md"} and (
-        "grant" not in path.name and "receipt" not in path.name)
-
-
-def inventory(root):
+def inventory(root, roots=ROOT_ROLES):
     ordinary_ancestry(root)
     members, pending = {}, [root]
     count = total = 0
@@ -77,7 +66,7 @@ def inventory(root):
                 if not member_path(name + "/member"):
                     raise ValueError("Unexpected package directory")
                 pending.append(path)
-            elif not payload_member(name) or not stat.S_ISREG(info.st_mode) or not 0 < info.st_size <= 256 * MIB:
+            elif not payload_member(name, roots) or not stat.S_ISREG(info.st_mode) or not 0 < info.st_size <= 256 * MIB:
                 raise ValueError("Unexpected package member")
             else:
                 total += info.st_size
@@ -105,8 +94,10 @@ def checked_payload(path, record, output=None):
         raise ValueError("Package member hash changed")
 
 
-def validate_paths(paths):
-    if tuple(paths.decode("ascii").splitlines()) != ISOLATED_PATHS:
+def validate_paths(paths, runtime_id=None):
+    closed = (paths == runtime.PATHS if runtime_id is not None
+              else tuple(paths.decode("ascii").splitlines()) == ISOLATED_PATHS)
+    if not closed:
         raise ValueError("Interpreter paths are not closed")
 
 
@@ -118,13 +109,15 @@ class Resolution:
     provider: str
 
 
-def closure_records(raw, members):
+def closure_records(raw, members, runtime_id=None):
+    roots = RUNTIME_ROOT_ROLES if runtime_id is not None else ROOT_ROLES
+    required_runtime = runtime.RUNTIME_FILES.keys() if runtime_id is not None else REQUIRED_RUNTIME
     closure = fields_from_json(raw, PACKAGE_LIMIT)
     if (not exact_keys(closure, "version resolutions notices")
             or type(closure["version"]) is not int or closure["version"] != 1
             or type(closure["resolutions"]) is not list or not closure["resolutions"]
             or type(closure["notices"]) is not dict
-            or not REQUIRED_RUNTIME | {CLOSURE} <= members.keys()):
+            or not required_runtime | {CLOSURE} <= members.keys()):
         raise ValueError("Incomplete runtime, resolver or notice closure")
     resolutions = []
     identities = set()
@@ -156,10 +149,23 @@ def closure_records(raw, members):
         identities.add(identity)
         resolutions.append(record)
     names = {record.consumer for record in resolutions}
-    if not {ROOT_ROLES[key] for key in ("loader", "interpreter", "operator", "supervisor", "controller", "watchdog", "reader")} <= names:
+    resolver_roles = {"loader", "interpreter", "operator", "supervisor", "controller", "watchdog", "reader"}
+    if runtime_id is not None:
+        resolver_roles |= {"background_interpreter", "cue_worker"}
+    if not {roots[key] for key in resolver_roles} <= names:
         raise ValueError("Fixed role is missing its checked resolver record")
+    if runtime_id is not None:
+        resolved = {(row.consumer, row.kind, row.name, row.provider) for row in resolutions}
+        if not runtime.REQUIRED_RESOLUTIONS <= resolved:
+            raise ValueError("Selected runtime resolver providers differ")
     notices = closure["notices"]
+    if runtime_id is not None:
+        for license_id, required in runtime.LICENSE_NOTICES.items():
+            if notices.get(license_id) != list(required):
+                raise ValueError(f"Selected runtime closure notice reference differs for {license_id}")
     for name, member in members.items():
+        if runtime_id is not None and name in runtime.MEMBER_LICENSES:
+            continue  # File pins and graph bindings were checked before the closure.
         notice = notices.get(member["license"])
         if type(notice) is not str or notice not in members or not notice.startswith("route/licenses/"):
             raise ValueError(f"Missing retained license notice for {name}")
@@ -172,12 +178,19 @@ def assemble(staging, output, specification):
             or ".." in output.parts or not output.is_absolute()):
         raise ValueError("Assembly output must be a separate absolute directory")
     ordinary_ancestry(output.parent)
-    listing = inventory(staging)
-    if (not exact_keys(specification, "source tree members")
+    runtime_id = None
+    roots = ROOT_ROLES
+    fields = "source tree members"
+    if type(specification) is dict and "runtime" in specification:
+        runtime_id = package_runtime(specification["runtime"])
+        roots = RUNTIME_ROOT_ROLES
+        fields += " runtime"
+    if (not exact_keys(specification, fields)
             or any(type(specification[key]) is not str or not GIT_ID.fullmatch(specification[key])
                    for key in ("source", "tree"))
             or type(specification["members"]) is not list):
         raise ValueError("Unsupported package assembly specification")
+    listing = inventory(staging, roots)
     members = {}
     for record in specification["members"]:
         if not exact_keys(record, "path bytes sha256 origin license requires"):
@@ -193,21 +206,26 @@ def assemble(staging, output, specification):
         members[name] = record
     if listing.keys() != members.keys():
         raise ValueError("Staged package differs from the exact member lock")
-    validate_graph(members)
+    if runtime_id is not None:
+        validate_runtime_members(members)
+    validate_graph(members, roots)
     for name, record in members.items():
         checked_payload(staging / name, record)
     closure = read_data(staging / CLOSURE, PACKAGE_LIMIT)
     if digest(closure) != members[CLOSURE]["sha256"]:
         raise ValueError("Resolver closure changed during assembly")
-    closure_records(closure, members)
-    paths = read_data(staging / "python/python313._pth", 1024)
-    if digest(paths) != members["python/python313._pth"]["sha256"]:
+    closure_records(closure, members, runtime_id)
+    path_file = runtime.PATH_FILE if runtime_id is not None else "python/python313._pth"
+    paths = read_data(staging / path_file, 1024)
+    if digest(paths) != members[path_file]["sha256"]:
         raise ValueError("Interpreter path file changed")
-    validate_paths(paths)
+    validate_paths(paths, runtime_id)
     validate_pair(read_data(staging / ROOT_ROLES["pair"], 8192), members)
-    raw = canonical(dict(version=1, platform="windows-x64", source=specification["source"],
-                         tree=specification["tree"], roots=ROOT_ROLES,
-                         members=[members[name] for name in sorted(members)]))
+    manifest = dict(version=1, platform="windows-x64", source=specification["source"],
+                    tree=specification["tree"], roots=roots, members=[members[name] for name in sorted(members)])
+    if runtime_id is not None:
+        manifest.update(version=runtime.MANIFEST_VERSION, runtime=runtime_id)
+    raw = canonical(manifest)
     if len(raw) > PACKAGE_LIMIT:
         raise ValueError("Package manifest exceeded its bound")
     output.mkdir()
@@ -222,6 +240,19 @@ def assemble(staging, output, specification):
 
 
 @dataclass(frozen=True)
+class RuntimeObservation:
+    runtime_id: str
+    version: str
+    machine: int
+    subsystem: int
+    image: Path
+    entry: Path
+    flags: tuple[str, ...]
+    pre_interpreter: bool
+    redirected_stdio: bool
+
+
+@dataclass(frozen=True)
 class InstallationObservation:
     directory: Path
     root: object
@@ -232,6 +263,7 @@ class InstallationObservation:
     interpreter_paths: bytes
     files: dict
     resolutions: tuple[Resolution, ...]
+    runtime: RuntimeObservation | None = None
 
 
 @dataclass(frozen=True)
@@ -241,6 +273,7 @@ class FixedLaunch:
     interpreter: Path
     entry: Path
     directory: Path
+    flags: tuple[str, ...] = ()
 
 
 def load_fixed(registered_directory, approved_manifest, observe, launch):
@@ -259,14 +292,27 @@ def load_fixed(registered_directory, approved_manifest, observe, launch):
     if closure_file is None:
         raise ValueError("Protected runtime closure is missing")
     closure_file.validate(len(observed.closure), digest(observed.closure))
-    declared = closure_records(observed.closure, members)
-    observed.files["python/python313._pth"].validate(len(observed.interpreter_paths), digest(observed.interpreter_paths))
-    validate_paths(observed.interpreter_paths)
+    declared = closure_records(observed.closure, members, package.runtime_id)
+    path_file = runtime.PATH_FILE if package.runtime_id is not None else "python/python313._pth"
+    observed.files[path_file].validate(len(observed.interpreter_paths), digest(observed.interpreter_paths))
+    validate_paths(observed.interpreter_paths, package.runtime_id)
     if observed.resolutions != declared:
         raise PermissionError("Observed Python import or DLL resolution differs")
-    return launch(FixedLaunch(package, registered_directory / ROOT_ROLES["loader"],
-                              registered_directory / ROOT_ROLES["interpreter"],
-                              registered_directory / ROOT_ROLES["supervisor"], registered_directory))
+    entry = registered_directory / ROOT_ROLES["supervisor"]
+    if package.runtime_id is None:
+        if observed.runtime is not None:
+            raise PermissionError("Version 1 package cannot use the selected runtime entry")
+        image, flags = registered_directory / ROOT_ROLES["interpreter"], ()
+    else:
+        image, flags = registered_directory / runtime.BACKGROUND, runtime.FLAGS
+        expected = RuntimeObservation(runtime.RUNTIME_ID, runtime.VERSION, runtime.MACHINE,
+                                      runtime.BACKGROUND_SUBSYSTEM, image, entry, flags, True, True)
+        actual = observed.runtime
+        if (type(actual) is not RuntimeObservation or actual != expected
+                or actual.pre_interpreter is not True or actual.redirected_stdio is not True):
+            raise PermissionError("Selected GUI runtime entry differs before interpreter dispatch")
+    return launch(FixedLaunch(package, registered_directory / ROOT_ROLES["loader"], image, entry,
+                              registered_directory, flags))
 
 
 def main(argv=None):

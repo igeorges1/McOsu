@@ -13,6 +13,7 @@ import sys
 import time
 import uuid
 
+from gameplay_operator_runtime import NOTICE_SOURCE_FILES
 from verification_process import digest, execute, nonmodal
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -138,7 +139,9 @@ class Run:
             require((ROOT / "src/App/Osu" / ("OsuTimingAudio" + name + ".h")).is_file(), "Missing production header: " + name)
         inputs += [ROOT / "tests" / (suite + ".cpp") for suite in SUITES]
         checker = ROOT / "tests/check-timing-audio-settings.py"
-        inputs += [checker, ROOT / "docs/timing-audio-controls.md"]
+        inputs += [checker, ROOT / "docs/timing-audio-controls.md", ROOT / "docs/timing-audio.md",
+                   ROOT / "tools/gameplay-operator-bootstrap/runtime_policy.h"]
+        inputs += [ROOT / name for name in NOTICE_SOURCE_FILES]
         inputs += inventory_dependencies(checker)
         inputs += [ROOT / "src/App/Osu" / name for name in
                    ("OsuTimingAudioFeedback.cpp", "OsuHUD.cpp", "OsuBeatmap.cpp", "OsuTimingAudioOptions.cpp", "OsuOptionsMenu.cpp")]

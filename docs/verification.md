@@ -216,3 +216,11 @@ an inert callback. Neither test invokes the actual installer,
 interpreter bootstrap, process/token/pipe/ACL APIs, UAC, ETW or audio.
 The runtime distribution build and installed adapter require separate
 qualification.
+
+Run `python tests/gameplay_operator_runtime_test.py` for version-2 runtime,
+notice and resolver admission. It drives the production fixed-load interface
+with synthetic protected-object and payload observations, including independently
+reapproved but substituted metadata. It reads the shipped notice texts to check
+their selected pins. No vendor interpreter payload is supplied, materialized or
+executed, and no native protection or signature observation is made. This adds
+source contract coverage; actual runtime and installed admission remain separate.
