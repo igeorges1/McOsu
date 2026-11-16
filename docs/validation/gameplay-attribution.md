@@ -7,6 +7,21 @@ dependency. Product, test and tool bytes retain their accepted identities.
 Publication documents preserve the inherited CI and known limitations.
 This owner ancestry is not a combined preview deployment.
 
+The following source-only operator layer extends the accepted package policy
+through `c2fd53e667a26ce9619f4e6c56468dab9c9de51b`. It pins CPython 3.14.10
+AMD64 entry roles, isolated paths and the selected notice texts and references.
+App sources, build inputs and the top-level license are unchanged. This does
+not install that runtime or enable public Start. The earlier known-fixture
+certificate below keeps its original tool and App identities.
+
+The added CI runtime suite supplies synthetic protected-file observations to
+the production fixed-load path, tests substituted runtime/notice metadata and
+resolver dependencies, and checks the shipped notice texts. It requires no
+vendor executable or private cache. Native bootstrap coverage now includes the
+24 selected-runtime predicates. These checks establish source contracts;
+signature trust, actual protected filesystem observations, recursive loaded
+DLL/import closure, installation and operational capture remain separate.
+
 The actual normal App build is
 `919c61ad5d28b043bf86d40cdd6e2bfe401798c7`, executable SHA-256
 `6f0e649b1732aa082eb1503e7e7a60dea4b36706527b9aabcdecaf537ad5fe62`.
