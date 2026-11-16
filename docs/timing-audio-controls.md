@@ -251,3 +251,31 @@ Active cue depends on an authenticated RECORDING phase and a qualified protected
 | --- | --- | --- | --- | --- | --- |
 | `active_cue` | `--active-cue` | `soft` | preset | soft, clear, off | Play one cue after authenticated RECORDING. Off leaves visible status. |
 | `baseline_wait_ms` | `--baseline-wait-ms` | `45000` | ms | 1000–120000 | Time from Start to bind a fresh saved baseline Mark. |
+
+### Proposed protected operator runtime
+
+The draft selects CPython 3.14.10 AMD64 Windows embeddable (`cpython-3.14.10-amd64-embed`) for package manifest version 2.
+Each entry uses `-I` `-B` `-S` before the fixed script.
+`python/python314._pth` contains these lines in order and ends with a newline.
+
+- `python314.zip`
+- `.`
+- `../tools`
+- `../route`
+
+| Context | Entry | Runtime image |
+| --- | --- | --- |
+| Visible normal console | `tools/gameplay_operator.py` | `python/python.exe` |
+| Elevated supervisor | `tools/operator_supervisor.py` | `python/pythonw.exe` |
+| Elevated controller | `tools/operator_controller.py` | `python/pythonw.exe` |
+| Elevated watchdog | `tools/operator_watchdog.py` | `python/pythonw.exe` |
+| Normal background cue worker | `tools/operator_cue_worker.py` | `python/pythonw.exe` |
+
+The version 2 package pins these notice files and binds each runtime member to its notice group.
+
+- `route/licenses/cpython-upstream-license.txt`
+- `route/licenses/cpython-incorporated-licenses.txt`
+- `route/licenses/supplemental-notices.txt`
+- `route/licenses/runtime-changes.txt`
+
+The reviewed notice set covers selected runtime evidence. Redistribution applicability, signer trust and native loader qualification remain separate.

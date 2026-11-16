@@ -2,6 +2,7 @@
 import argparse
 from dataclasses import fields as dataclass_fields
 from decimal import Decimal
+from hashlib import sha256
 from pathlib import Path
 import re
 import sys
@@ -109,6 +110,7 @@ for name, label, section, kind, lo, hi, help_text in hud_fields:
 sys.path.insert(0, str(root / "tools"))
 from gameplay_budget import Budget
 from gameplay_operator import PREFERENCES_FILE, SETTINGS as OPERATOR_SETTINGS
+from gameplay_operator_runtime import NOTICE_SOURCE_FILES, native_policy_header, reference_lines
 from gameplay_raw import (RAW_LOOKAROUND, RAW_LOOKAROUND_DEFAULT, RAW_LOOKAROUND_HELP,
                           RAW_LOOKAROUND_OPTION, RAW_PAIR_HELP, RAW_PAIR_OPTION, RAW_WINDOW_DEFAULT, RAW_WINDOW_HELP,
                           RAW_WINDOW_MODES, RAW_WINDOW_OPTION)
@@ -152,12 +154,30 @@ for setting in OPERATOR_SETTINGS:
     lines.append(f"| `{setting.key}` | `{setting.flag}` | `{setting.default}` | "
                  f"{setting.unit} | {setting.domain} | {setting.help} |")
 
-reference = root / "docs/timing-audio-controls.md"
-generated = "\n".join(lines) + "\n"
-if args.write_docs:
-    reference.write_text(generated, encoding="utf-8")
-else:
-    assert reference.read_text(encoding="utf-8") == generated, "Stale timing reference. Regenerate it with --write-docs."
+for relative, (size, sha) in NOTICE_SOURCE_FILES.items():
+    path = root / relative
+    assert path.is_file(), f"Missing selected runtime notice {relative}."
+    content = path.read_bytes()
+    assert len(content) == size and sha256(content).hexdigest() == sha, f"Stale selected runtime notice {relative}."
+
+runtime_lines = reference_lines()
+lines += ["", *runtime_lines]
+map_file = root / "docs/timing-audio.md"
+start, end = "<!-- operator-runtime:begin -->", "<!-- operator-runtime:end -->"
+map_source = map_file.read_text(encoding="utf-8")
+before, remainder = map_source.split(start + "\n")
+_, after = remainder.split(end)
+projections = {
+    root / "docs/timing-audio-controls.md": "\n".join(lines) + "\n",
+    map_file: before + start + "\n\n" + "\n".join(runtime_lines) + "\n\n" + end + after,
+    root / "tools/gameplay-operator-bootstrap/runtime_policy.h": native_policy_header(),
+}
+for path, generated in projections.items():
+    if args.write_docs:
+        path.write_text(generated, encoding="utf-8", newline="\n")
+    else:
+        assert path.read_text(encoding="utf-8") == generated, (
+            f"Stale {path.name}. Regenerate it with --write-docs.")
 print(f"PASS: {len(audio_fields)} audio, {len(hud)} HUD, {len(visual)} peripheral, {len(capture)} capture "
       f"and {len(dataclass_fields(Budget))} gameplay budget settings plus raw analyzer controls and "
       f"{len(OPERATOR_SETTINGS)} operator preferences match source and tracked reference")

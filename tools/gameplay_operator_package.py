@@ -8,8 +8,10 @@ from dataclasses import dataclass
 import hashlib
 import json
 import ntpath
+from pathlib import PurePosixPath
 import re
 
+import gameplay_operator_runtime as runtime
 from gameplay_attribution import SHA
 from gameplay_raw import BOUNDARY_POLICY, WIRE_SCHEMA
 
@@ -27,6 +29,19 @@ ROOT_ROLES = {
     "consumer": "tools/gameplay_raw.py",
     "native_source": "tools/gameplay-raw-reader/witness.cpp",
 }
+RUNTIME_ROOT_ROLES = ROOT_ROLES | {
+    "interpreter": runtime.CONSOLE,
+    "background_interpreter": runtime.BACKGROUND,
+    **{role: entry for role, entry, _, _ in runtime.ENTRIES},
+}
+
+
+def package_runtime(value):
+    if value != runtime.RUNTIME_ID:
+        raise ValueError("Unsupported operator package runtime")
+    return value
+
+
 PREFIXES = {"bin", "python", "tools", "route"}
 SEGMENT = re.compile(r"[a-z0-9_][a-z0-9_.-]{0,79}\Z")
 GIT_ID = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})\Z")
@@ -70,6 +85,18 @@ def member_path(name):
     return (len(parts) > 1 and parts[0] in PREFIXES
             and all(SEGMENT.fullmatch(part) and not part.endswith(".")
                     and not ntpath.isreserved(part) for part in parts))
+
+
+def payload_member(name, roots):
+    if not member_path(name):
+        return False
+    path = PurePosixPath(name)
+    if path.suffix == ".exe":
+        return name in roots.values()
+    if path.suffix in {".dll", ".pyd", ".zip", "._pth"}:
+        return name.startswith("python/")
+    return path.suffix in {".py", ".cpp", ".h", ".json", ".txt", ".md"} and (
+        "grant" not in path.name and "receipt" not in path.name)
 
 
 @dataclass(frozen=True)
@@ -121,11 +148,47 @@ class Package:
     pair_sha256: str
     reader_sha256: str
     interpreter_sha256: str
+    runtime_id: str | None = None
+    background_interpreter_sha256: str | None = None
+
+    @property
+    def background_sha256(self):
+        if self.runtime_id is None:
+            return self.interpreter_sha256  # Version 1 used one image for every role.
+        return self.background_interpreter_sha256
 
 
-def validate_graph(members):
+def validate_runtime_members(members):
+    actual = {name: (item["bytes"], item["sha256"]) for name, item in members.items()
+              if name.startswith("python/")}
+    if actual != runtime.RUNTIME_FILES:
+        raise ValueError("Selected runtime file inventory or pin differs")
+    if any(not payload_member(name, RUNTIME_ROOT_ROLES) for name in members):
+        raise ValueError("Unexpected selected runtime package member")
+    for name, pin in runtime.NOTICE_FILES.items():
+        member = members.get(name)
+        if member is None or (member["bytes"], member["sha256"]) != pin:
+            raise ValueError(f"Selected runtime notice missing or pin differs for {name}")
+    for name, member in members.items():
+        license_id = runtime.MEMBER_LICENSES.get(name)
+        if license_id is None:
+            if member["license"] in runtime.LICENSE_NOTICES:
+                raise ValueError(f"Unexpected selected runtime license reference for {name}")
+            continue
+        if member["license"] != license_id:
+            raise ValueError(f"Selected runtime license reference differs for {name}")
+        required_notices = set(runtime.LICENSE_NOTICES[license_id]) - {name}
+        notice_edges = runtime.NOTICE_FILES.keys() & member["requires"]
+        if notice_edges != required_notices:
+            raise ValueError(f"Selected runtime notice dependencies differ for {name}")
+    for consumer, required in runtime.REQUIRED_EDGES.items():
+        if consumer not in members or not required <= set(members[consumer]["requires"]):
+            raise ValueError(f"Missing selected runtime dependency for {consumer}")
+
+
+def validate_graph(members, roots=ROOT_ROLES):
     reachable = set()
-    pending = list(ROOT_ROLES.values())
+    pending = list(roots.values())
     while pending:
         name = pending.pop()
         if name in reachable:
@@ -163,11 +226,20 @@ def validate_package(manifest_raw, pair_raw, *, approved_manifest, root, manifes
     if not is_sha(approved_manifest) or approved_manifest != manifest_hash:
         raise PermissionError("Package manifest lacks independent approval")
     manifest_file.validate(len(manifest_raw), manifest_hash)
-    if (not exact_keys(manifest, "version platform source tree roots members")
-            or type(manifest["version"]) is not int or manifest["version"] != 1
+    version = manifest.get("version") if type(manifest) is dict else None
+    if type(version) is not int or version not in (1, runtime.MANIFEST_VERSION):
+        raise ValueError("Unsupported operator package layout")
+    fields = "version platform source tree roots members"
+    roots = ROOT_ROLES
+    runtime_id = None
+    if version == runtime.MANIFEST_VERSION:
+        fields += " runtime"
+        roots = RUNTIME_ROOT_ROLES
+        runtime_id = package_runtime(manifest.get("runtime"))
+    if (not exact_keys(manifest, fields)
             or manifest["platform"] != "windows-x64"
             or any(type(manifest[key]) is not str or not GIT_ID.fullmatch(manifest[key]) for key in ("source", "tree"))
-            or manifest["roots"] != ROOT_ROLES or type(manifest["members"]) is not list):
+            or manifest["roots"] != roots or type(manifest["members"]) is not list):
         raise ValueError("Unsupported operator package layout")
     members = {}
     for member in manifest["members"]:
@@ -183,11 +255,14 @@ def validate_package(manifest_raw, pair_raw, *, approved_manifest, root, manifes
                 or len(set(required)) != len(required)):
             raise ValueError("Invalid package member or dependency")
         members[name] = member
-    if not set(ROOT_ROLES.values()) <= members.keys() or files.keys() != members.keys():
+    if not set(roots.values()) <= members.keys() or files.keys() != members.keys():
         raise ValueError("Observed package inventory differs from required closure")
-    validate_graph(members)
+    if runtime_id is not None:
+        validate_runtime_members(members)
+    validate_graph(members, roots)
     for name, member in members.items():
         files[name].validate(member["bytes"], member["sha256"])
     pair_sha256, reader = validate_pair(pair_raw, members)
     return Package(manifest_hash, manifest["source"], manifest["tree"], pair_sha256, reader,
-                   members[ROOT_ROLES["interpreter"]]["sha256"])
+                   members[roots["interpreter"]]["sha256"], runtime_id,
+                   members[runtime.BACKGROUND]["sha256"] if runtime_id is not None else None)

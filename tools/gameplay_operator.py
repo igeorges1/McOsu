@@ -22,7 +22,7 @@ from gameplay_budget import Budget, MIB
 from gameplay_collector import validate_properties
 from gameplay_operator_package import canonical, digest, exact_keys, fields_from_json, is_sha
 from gameplay_raw import WIRE_SCHEMA
-from gameplay_record import FOCUSED, LOADING, MAP_HASH, MARK_FOLDER, MINIMIZED, PLAY, capture_entries, is_reparse
+from gameplay_mark_inventory import FOCUSED, LOADING, MAP_HASH, MARK_FOLDER, MINIMIZED, PLAY, capture_entries, is_reparse
 
 
 PREFERENCES_FILE = "operator-preferences.json"
@@ -301,7 +301,7 @@ class HandleRegistration:
                 or any(item.actor.elevated is not True or not positive_int(item.actor.pid)
                        or not positive_int(item.actor.creation) or item.actor.account != plan.target.account
                        or item.actor.desktop != plan.target.desktop
-                       or item.actor.image_sha256 != plan.package.interpreter_sha256 for item in self.owned)
+                       or item.actor.image_sha256 != plan.package.background_sha256 for item in self.owned)
                 or not positive_int(consent_ms) or consent_ms >= plan.consent_until_ms
                 or not consent_ms <= self.registered_ms < consent_ms + plan.budget.observer_ms):
             raise PermissionError("Consent or original controller/watchdog registration did not match")
@@ -435,7 +435,7 @@ class Session:
                 or any(not proc.identity or proc.actor.elevated is not True or not positive_int(proc.actor.pid)
                        or not positive_int(proc.actor.creation) or proc.actor.account != plan.target.account
                        or proc.actor.desktop != plan.target.desktop
-                       or proc.actor.image_sha256 != plan.package.interpreter_sha256
+                       or proc.actor.image_sha256 != plan.package.background_sha256
                        for proc in (supervisor, controller))):
             raise PermissionError("Expired consent or unverified operator actors")
         if cue_worker is not None:
@@ -446,7 +446,7 @@ class Session:
                     or worker.pid in {plan.requester.actor.pid, supervisor.actor.pid, controller.actor.pid, plan.target.pid}
                     or not positive_int(worker.pid) or not positive_int(worker.creation)
                     or worker.account != plan.target.account or worker.desktop != plan.target.desktop
-                    or worker.elevated is not False or worker.image_sha256 != plan.package.interpreter_sha256):
+                    or worker.elevated is not False or worker.image_sha256 != plan.package.background_sha256):
                 raise PermissionError("Unverified normal notification worker")
         self.plan, self.supervisor, self.controller, self.consent_ms = plan, supervisor, controller, consent_ms
         self._plan_hash = plan.sha256

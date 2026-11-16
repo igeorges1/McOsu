@@ -286,6 +286,30 @@ The source checkout can exercise this boundary using inert files and
 injected adapters. It provides no installed trust, actual Windows
 handle evidence or activation.
 
+The draft version 2 lock selects one runtime by the `runtime` field.
+See the [runtime policy](timing-audio-controls.md#proposed-protected-operator-runtime)
+for the exact version, path order, flags and role assignments. It binds both
+executable images and the staged runtime files by size and digest. The visible
+normal operator uses the console image. The fixed supervisor dispatch uses the GUI
+image and requires explicit pre-interpreter and redirected-stdio observations.
+Future controller, watchdog and cue-worker launchers must honor the same role and
+entry policy. A GUI check with missing output fails. The supported lab route and
+version 1 package fixture retain their existing identities and reader pair schema.
+
+For version 2, place the four tracked [runtime notice texts](../tools/gameplay-operator-notices)
+under `route/licenses` in the staged package. The member lock pins each text's
+size and digest. Each selected member has a fixed license group and dependency
+edges to its notice texts. The closure's `notices` entries for these groups
+list the exact package paths in metadata order. The existing single-path
+entries remain available for other package members. Review the terms in those
+files for the planned redistribution.
+
+Normal GUI compatibility covers redirected startup, corrected inventory imports,
+Settings and the unavailable Start result. Protected loading, DLL origin and
+closure, signature and notice verification, the installer, channel and
+independent release require separate evidence. The draft supplies no operational
+Start or installation authority.
+
 The local channel binds status, watchdog registration, Start, Stop
 and independent release to the original peer, attempt and sequence.
 Failed or rejected observations clear older cue eligibility. After
